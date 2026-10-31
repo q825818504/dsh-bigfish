@@ -10,6 +10,41 @@
 
 ---
 
+## 2.1.0 — 2026-10-31
+
+**修挂饰破图 + 数据根目录可自定义**
+
+### 修：右下角挂饰和表情图全部破图
+
+合并时把心情模块从 `lib/index.js` 搬到了 `lib/mood/index.js`，但包根目录还是按
+「往上走一级」算的，结果 `PACKAGE_ROOT` 指向了 `<包>/lib` 而不是 `<包>`，
+所有 `assets/*` 都 404。
+
+同时 `face-*.png` / `feiyu.png` 被放进了 `assets/faces/` 子目录，而代码读的是
+`assets/` 根，路径也对不上。
+
+修：
+- `PACKAGE_ROOT` 改成往上两级
+- 图片移回 `assets/` 根目录
+
+### 新增：数据根目录可自定义
+
+以前只能改 profile 的 `cordis.patch.yml`。现在「设置」板块的「数据放在哪」
+多了一个输入框，保存后写入：
+
+```
+<DSH_HOME>/bigfish/root.json
+{ "dataRoot": "D:\\大肥鱼\\数据" }
+```
+
+优先级：`root.json` > config 的 `scopeDirectory` > `database` 所在目录。
+记忆和心情都读它，改完重启生效。
+
+**旧数据不会自动搬** —— 换目录后要把旧目录里的 `scope.json` 和各范围子目录
+手动移过去，面板上也写了这句。
+
+---
+
 ## 2.0.1 — 2026-10-31
 
 **兼容 DSH 0.2.1-rc.4**
