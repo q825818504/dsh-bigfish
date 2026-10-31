@@ -2235,7 +2235,10 @@ window.__ModuleLoader__.load({
               }),
               h('p', { className: 'dfm-note' }, t('logicalNote')))
               : null,
-            settingsPanel));
+            /* ⭐ 2026-10-31：原来的「记忆存储位置 / 强制范围模式 / 拆分旧库」
+               整块搬去「设置」板块 —— 范围与存储只该有一个配置入口。
+               记忆板块只负责看记忆。 */
+            null));
       };
     }
 
@@ -2985,23 +2988,30 @@ function 创建设置面板(React, h, 依赖) {
      现在外壳在启动后先预取一次，面板打开时先拿缓存立即渲染，再后台刷新。 */
   let 缓存 = null
 
+  /** RPC 可能返回 { ok, value } 信封，也可能已被解包 —— 两种都吃 */
+  function 解包(r) {
+    if (r && typeof r === 'object' && r.value !== undefined && (r.ok === true || r.ok === false)) return r.value
+    return r
+  }
+
   async function 拉数据() {
-    const [ws, ss, scope] = await Promise.all([
+    const [ws, ss, scopeRaw] = await Promise.all([
       fetchJson('/dsh-bigfish-mood/workspaces'),
       fetchJson('/dsh-bigfish-mood/sessions'),
       rpcCall('/api', 'dafeiyu-memory/settings', { action: 'read-scope' }),
     ])
+    const scope = 解包(scopeRaw) || {}
     const 工作区们 = Array.isArray(ws && ws.workspaces) ? ws.workspaces : []
     const 会话们 = Array.isArray(ss && ss.sessions) ? ss.sessions : []
     // 优先显示「已保存」的那份；还没保存过就用当前生效的
-    const s = (scope && (scope.saved || scope.active)) || {}
+    const s = scope.saved || scope.active || {}
     const 模式 = s.mode === 'session' ? 'session' : 'workspace'
     const 工作区Id = s.workspaceId || ''
     const 命中 = 工作区们.find((x) => x.id && x.id === 工作区Id)
     const 会话 = Array.isArray(s.sessionIds) ? s.sessionIds : []
     // 已保存的和正在生效的不一致 → 说明改过但还没重启
-    const a = (scope && scope.active) || {}
-    const 待生效 = !!(scope && scope.saved) && (
+    const a = scope.active || {}
+    const 待生效 = !!scope.saved && (
       a.mode !== s.mode ||
       (a.workspaceId || '') !== (s.workspaceId || '') ||
       JSON.stringify(a.sessionIds || []) !== JSON.stringify(s.sessionIds || [])
