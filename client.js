@@ -1045,22 +1045,19 @@ window.__ModuleLoader__.load({
       function emotionAt(moodState, time) {
         if (!moodState || !moodState.available) return null;
         const points = Array.isArray(moodState.points) ? moodState.points : [];
-        if (!points.length) {
-          // 还没判断过任何一轮 → 全部用当前心情
-          return moodState.current || null;
-        }
         const ts = Number(time);
-        if (!Number.isFinite(ts)) return moodState.current || null;
+        if (!Number.isFinite(ts)) return null;
+        // ⭐ 2026-10-31：没有时间线 = 还没判断过任何一轮，那时没有「当时的心情」，
+        //    不再拿当前心情顶替。渲染会显示成灰球 + 「无记录」。
+        if (!points.length) return null;
         let best = null;
         for (const p of points) {
           if (!Number.isFinite(p.at)) continue;
           if (p.at <= ts && (!best || p.at > best.at)) best = p;
         }
         if (best) return best;
-        // 目标早于全部记录 → 用最早一条近似
-        const sorted = [...points].filter(p => Number.isFinite(p.at))
-          .sort((a, b) => a.at - b.at);
-        return sorted.length ? sorted[0] : (moodState.current || null);
+        // 目标早于全部记录 → 同样视为无记录，不用最早一条近似
+        return null;
       }
       /* 把情绪色与哈希色合成一个 tone：有情绪时用情绪色相，
          但仍保留哈希的浮动延迟，让每颗球呼吸节奏不同。 */

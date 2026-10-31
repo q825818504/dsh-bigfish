@@ -1,4 +1,4 @@
-﻿/**
+/**
  * lib/mood-bridge.js 的隔离测试。
  *
  * 重点验证「降级」：心情插件没装、文件坏了、timeline 为空，
@@ -84,9 +84,11 @@ test('emotionAt：取 target 之前最近的一条', () => {
   assert.equal(emotionAt(timeline, 9999).color.key, 'purple');
 });
 
-test('emotionAt：target 早于全部记录时用最早一条', () => {
+test('emotionAt：target 早于全部记录时返回 null（那时还没开始记录）', () => {
+  // ⭐ 2026-10-31：以前这里用「最早一条」近似，等于给旧记忆编了个不存在的心情。
+  //    现在明确返回 null，渲染层据此显示灰球 + 「无记录」。
   const timeline = [{ at: 5000, mood: 30, dims: { sad: 50 } }];
-  assert.equal(emotionAt(timeline, 100).color.key, 'blue');
+  assert.equal(emotionAt(timeline, 100), null);
 });
 
 test('emotionAt：空 / 非法输入返回 null', () => {
