@@ -3397,6 +3397,9 @@ function 创建设置面板(React, h, 依赖) {
       待生效根: rootInfo.pendingRoot || '',
       需要重启: rootInfo.restartNeeded === true,
       待生效根存在: rootInfo.pendingExists !== false,
+      // 三边是不是落在同一个目录（2.3.4）
+      一致: scope.consistent !== false,
+      三边根: scope.roots || {},
     }
   }
 
@@ -3477,6 +3480,8 @@ function 创建设置面板(React, h, 依赖) {
     const [待生效根, set待生效根] = React.useState(缓存 ? 缓存.待生效根 : '')
     const [需要重启, set需要重启] = React.useState(缓存 ? 缓存.需要重启 : false)
     const [待生效根存在, set待生效根存在] = React.useState(缓存 ? 缓存.待生效根存在 : true)
+    const [一致, set一致] = React.useState(缓存 ? 缓存.一致 : true)
+    const [三边根, set三边根] = React.useState(缓存 ? 缓存.三边根 : {})
     const [根保存中, set根保存中] = React.useState(false)
     const [根提示, set根提示] = React.useState('')
     const [根错误, set根错误] = React.useState('')
@@ -3508,6 +3513,8 @@ function 创建设置面板(React, h, 依赖) {
         set待生效根(d.待生效根)
         set需要重启(d.需要重启)
         set待生效根存在(d.待生效根存在)
+        set一致(d.一致)
+        set三边根(d.三边根)
       } catch (e) {
         set错误('读取配置失败：' + (e && e.message ? e.message : String(e)))
       } finally {
@@ -3714,6 +3721,19 @@ function 创建设置面板(React, h, 依赖) {
                     ? '重启后记忆和心情都会切到新目录。'
                     : '⚠ 新目录现在还不存在，重启后会是全新的空库；旧目录里的记忆不会自动跟过去。'))
             : null),
+
+        /* 2.3.4：三边一致性。记忆、心情、灵魂必须在同一个数据根下 ——
+           分裂了就在界面上直接说，别让用户去资源管理器里翻文件夹才发现。 */
+        一致 === false
+          ? h('div', { className: 'bf-warn', style: { marginTop: '10px' } },
+              h('strong', null, '⚠ 记忆和心情不在同一个目录'),
+              h('br'),
+              '记忆库：', (三边根 && 三边根.memory) || '（未知）',
+              h('br'),
+              '心情/灵魂：', (三边根 && 三边根.moodAndSoul) || '（未知）',
+              h('br'),
+              '配置里还有一处写着旧目录。把「数据根目录」留空或填成上面「当前正在使用」那个，保存后重启。')
+          : null,
 
         h('label', { className: 'bf-check', style: { marginTop: '10px' } },
           h('input', {

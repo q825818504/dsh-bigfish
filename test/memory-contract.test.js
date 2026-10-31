@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+/* ⚠ 2.3.4：整个测试文件必须跑在临时 DSH_HOME 里。
+   以前这里没设，而 scope-store 的 writeDataRoot 写的是 <DSH_HOME>/bigfish/root.json
+   —— 真实文件。跑一次测试就会把用户设的保存目录清空（实机已经发生过一次）。 */
+const TEST_HOME = mkdtempSync(join(tmpdir(), 'dafeiyu-mc-home-'));
+process.env.DSH_HOME = TEST_HOME;
+test.after(() => rmSync(TEST_HOME, { recursive: true, force: true }));
 import { MemoryStore } from '../lib/memory/store.js';
 import { attach } from '../lib/memory/adapter.js';
 import { apply } from '../lib/memory/index.js';
@@ -386,18 +393,28 @@ test('C24 scoped stats agree with the browsable set', t => {
 import { options, panelQuerySessions, panelScopeIds, scopeDatabasePath, splitBankIntoScopes } from '../lib/memory/index.js';
 
 
-test('S1 scopeDatabasePath names one file per workspace, stably', () => {
+test('S1 scopeDatabasePath names one file per workspace, stably', async () => {
+  /* ⭐ 2.3.4：库文件路径的数据根改由 root.json 决定，不再看 database 所在目录。
+     所以这里先把根指到一个临时目录，再断言文件名规则。 */
+  const { writeDataRoot } = await import('../lib/scope-store.js');
+  const 根 = mkdtempSync(join(tmpdir(), 'dfm-s1-'));
+  writeDataRoot(根);
+  try {
   const base = { database: 'D:\\mem\\memory.sqlite3', scopeDirectory: '', bank: 'dafeiyu' };
   const ws = scopeDatabasePath({ ...base, bindingMode: 'workspace', bindingWorkspaceId: '83ba9d80-ec53-4a24-9245-7ce877a74e70' });
   // ⭐ 2026-10-31：每个范围一个独立目录，文件名也带范围特征：
   //    <base>/ws-<uuid>/memory-ws-<短标识>.sqlite3
-  assert.ok(ws.startsWith('D:\\mem\\ws-'), '应落在以范围命名的目录下：' + ws);
+  assert.ok(ws.startsWith(根), '应落在数据根下：' + ws);
   assert.match(ws, /memory-ws-[A-Za-z0-9_-]+\.sqlite3$/, '文件名要带范围特征：' + ws);
   // 同一个工作区永远解析到同一个文件
   assert.equal(scopeDatabasePath({ ...base, bindingMode: 'workspace', bindingWorkspaceId: '83ba9d80-ec53-4a24-9245-7ce877a74e70' }), ws);
   // 不同工作区必须落到不同文件
   const other = scopeDatabasePath({ ...base, bindingMode: 'workspace', bindingWorkspaceId: '6dde4a7d-7696-497a-b691-a41ed02d9f2a' });
   assert.notEqual(other, ws);
+  } finally {
+    writeDataRoot('');
+    rmSync(根, { recursive: true, force: true });
+  }
 });
 
 test('S2 scopeDatabasePath returns null when the scope is unresolved', () => {
@@ -409,15 +426,27 @@ test('S2 scopeDatabasePath returns null when the scope is unresolved', () => {
   assert.equal(scopeDatabasePath({ ...base, bindingMode: 'session', bindingSessionIds: undefined }), null);
 });
 
-test('S3 scopeDirectory overrides the database directory', () => {
+test('S3 root.json decides the data root, not profile scopeDirectory', async () => {
+  /* ⭐ 2.3.4 语义变更：以前 scopeDirectory 会覆盖 database 所在目录，
+     现在**唯一真源是 root.json** —— 三块（记忆/心情/灵魂）必须同源。
+     profile 里那个 scopeDirectory 只当 root.json 还不存在时的种子。 */
+  const { writeDataRoot } = await import('../lib/scope-store.js');
+  const 根 = mkdtempSync(join(tmpdir(), 'dfm-s3-'));
+  writeDataRoot(根);
+  try {
   const path = scopeDatabasePath({
     database: 'D:\\mem\\memory.sqlite3',
     scopeDirectory: 'E:\\scoped',
     bindingMode: 'workspace',
     bindingWorkspaceId: '83ba9d80-ec53-4a24-9245-7ce877a74e70',
   });
-  assert.ok(path.startsWith('E:\\scoped\\ws-'), '目录要跟随 scopeDirectory：' + path);
+  assert.ok(path.startsWith(根), '目录要跟随 root.json，而不是 scopeDirectory：' + path);
+  assert.ok(!path.includes('scoped'), 'profile 的 scopeDirectory 不能再参与解析');
   assert.match(path, /memory-ws-[A-Za-z0-9_-]+\.sqlite3$/, '文件名要带范围特征：' + path);
+  } finally {
+    writeDataRoot('');
+    rmSync(根, { recursive: true, force: true });
+  }
 });
 
 test('S4 multi-session binding maps to one stable file regardless of order', () => {
@@ -793,12 +822,8 @@ test('D10 a throwing workspace registry degrades to an empty scope', () => {
 // 完整插件 fixture：走真正的 apply()，用于验证热切换与配置往返。
 // 通过 browse/settings 两个 RPC 观察状态，不直接暴露内部 store 实例。
 function pluginFixture(initialConfig, sessions, workspaces) {
-  /* ⚠ 2.3.2 自检：apply() 会读 <DSH_HOME>/bigfish/root.json 决定数据根。
-     不隔离的话测试会读到真实机器上的配置（甚至写进去）。
-     整个文件共用一个临时家目录，每条用例开始前清掉上一次留下的 root.json。 */
-  if (!process.env.DSH_HOME || !process.env.DSH_HOME.includes('dafeiyu-mc-home-')) {
-    process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'dafeiyu-mc-home-'))
-  }
+  /* 2.3.4：DSH_HOME 已在文件顶部统一设为临时目录。
+     每条用例开始前清掉上一条留下的 root.json，避免互相影响。 */
   try { rmSync(join(process.env.DSH_HOME, 'bigfish', 'root.json'), { force: true }); } catch { /* 没有就算了 */ }
   const routes = new Map();
   const disposers = [];

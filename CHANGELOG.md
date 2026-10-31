@@ -10,6 +10,77 @@
 
 ---
 
+## 2.3.4 — 2026-10-31
+
+**三块数据真正统一到一个目录了**
+
+### 真 bug：记忆的库路径根本不看 root.json
+
+用户在设置里把保存目录改成 `D:\大肥鱼\灵魂`，还特地把 `D:\大肥鱼\数据` 删了。
+重启后 `数据` **又出现了**，里面是一个新建的空库。
+
+根因：记忆侧有**两套**路径逻辑。
+
+```js
+// apply() 里算出的范围根（读 scope.json 用）
+const 范围根 = resolveDataRoot();          // → 灵魂 ✓
+
+// 但库文件路径走的是另一个函数
+function scopeDatabasePath(value) {
+  const baseDir = value.scopeDirectory ...  // → profile 里写死的数据 ✗
+```
+
+`value.scopeDirectory` 来自 `cordis.patch.yml` 的 `D:\大肥鱼\数据`，和用户在设置里
+选的目录毫无关系。于是：
+
+```
+D:\大肥鱼\数据\ws-xxx\memory-*.sqlite3     ← 记忆（按 profile）
+D:\大肥鱼\灵魂\ws-xxx\mood-*.json          ← 心情（按 root.json）
+```
+
+**修**：`scopeDatabasePath()` 的数据根改为 `resolveDataRoot()`。
+`profile.scopeDirectory` 只当 `root.json` 还不存在时的种子，落盘后再不参与解析。
+`set-strict-scope` 里拆分旧库的那个 `baseDir` 一并改成同源。
+
+### 心情侧也不再缓存数据根
+
+`lib/mood/store.js` 里曾是 `let 数据根目录 = resolveDataRoot()`，只在模块 import 时
+求值一次。用户改了 `root.json` 之后，记忆换了目录、心情还留在旧的 —— 这就是分家的
+另一半原因。现在 `statePath()` 每次现算。
+
+### 设置面板加了「三边一致性自检」
+
+记忆、心情、灵魂不在同一个目录时，直接红字报出来：
+
+```
+⚠ 记忆和心情不在同一个目录
+记忆库：   D:\大肥鱼\数据
+心情/灵魂：D:\大肥鱼\灵魂
+```
+
+以前没有这个检查，分裂了只能在资源管理器里翻文件夹才发现。
+
+### 顺带修：测试会写真实的 root.json
+
+`memory-contract` 的 S1/S3 用 `writeDataRoot('')` 收尾，而那个函数写的是
+**真实的** `<DSH_HOME>/bigfish/root.json`。跑一次测试，用户辛苦设的保存目录就被清空
+——本次实机已经发生过一次（`dataRoot` 变成空串）。
+
+现在整个测试文件跑在临时 `DSH_HOME` 里，跑完删掉。
+验证方式：跑测试前后对真实 `root.json` 取 md5，完全一致。
+
+### 测试
+
+新增 `test/data-root-sameness.test.mjs`（独立进程）：
+- 记忆库必须跟随 `root.json`，不能跟随 profile 的 `scopeDirectory`
+- 记忆与心情必须落在**同一个数据根、同一个范围目录**
+
+```
+183 通过 / 0 失败 / 0 跳过
+```
+
+---
+
 ## 2.3.3 — 2026-10-31
 
 **记忆与心情真的指向同一个范围了 + 改目录后能看清"现在用哪个"**
