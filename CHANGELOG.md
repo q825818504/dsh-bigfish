@@ -10,6 +10,42 @@
 
 ---
 
+## 1.0.1 — 2026-10-31
+
+**修：1.0.0 装上后 DSH 起不来（`web boot: 1 entry did not activate / dsh-bigfish: failed`）**
+
+### 根因
+
+合并后的客户端外壳只声明了 `inject: ['slots']`，但记忆面板在 `apply` 里用了
+`ctx.locale.register(...)`，渲染时还要用 `ctx.connection.rpc` 与 `ctx.uiWorkspace`。
+
+cordis 只把 `inject` 里声明过的服务挂到 `ctx` 上。没声明就是 `undefined`，
+`apply` 抛 TypeError，整个客户端 entry 激活失败 —— 而客户端失败会阻塞 web boot，
+所以 DSH 直接起不来，只能禁用插件才能进入。
+
+Host 侧一直是好的（日志里 `[dsh-bigfish/memory] 已启用`），坏的只有客户端。
+
+### 修复
+
+- 外壳的 `inject` 改为**从两个子模块自身的 inject 取并集**：
+  `[...new Set(['slots', ...memoryModule.inject, ...moodModule.inject])]`
+  这样以后子模块多用哪个服务，外壳自动跟上，不会再漏。
+- 测试补两条回归：
+  - `inject 覆盖两个子面板用到的全部服务` —— 少一个就红
+  - `inject 缺少 locale 时 apply 会抛错` —— 证明 mock 与 cordis 同构，测试真能拦住这类事故
+  同时把测试里的 mock ctx 改成**只提供 inject 里声明的服务**，与真实环境同构。
+
+### 顺带
+
+- 启动日志前缀从 `[dafeiyu-memory] 1.3.2 已启用` 改成 `[dsh-bigfish/memory] 已启用`。
+  原来那行硬编码了旧包名和旧版本号，排查这次事故时差点把我带偏。
+
+### 测试
+
+7 份 / **133 条**全过（原 131 条 + 新增 2 条）。
+
+---
+
 ## 1.0.0 — 2026-10-31
 
 **两个插件合成一个：侧边栏只留「大肥鱼」，里面分记忆与心情两个板块**

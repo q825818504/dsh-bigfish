@@ -5,8 +5,14 @@
  *   1. 合并后的 client.js 只注册一个 sidebar.panellist 和一个 main
  *   2. 两个子面板以 embedded 模式启动，不会各自再注册一遍
  *   3. 侧栏 id 与 main 的 key 一致（DSH 靠这个把入口和面板对上）
+ *   4. **inject 覆盖两个子面板用到的全部服务** —— 这条是 2026-10-31 线上事故的回归测试
  *
- * 用 vm 跑浏览器代码，mock 掉 React / document / slots。
+ * 第 4 条的由来：第一次合并时外壳只声明了 `inject: ['slots']`，但记忆面板在 apply 里
+ * 用了 `ctx.locale.register(...)`。cordis 只把 inject 里声明的服务挂到 ctx 上，
+ * 所以 `ctx.locale` 是 undefined，apply 抛错，整个客户端 entry 激活失败，
+ * DSH 直接起不来（报 `web boot: 1 entry did not activate / dsh-bigfish: failed`）。
+ *
+ * 因此这里的 mock ctx **只提供 inject 里声明的服务**，与真实环境同构。
  * 跑法：node test/merged-client.test.mjs
  * ============================================================================
  */
@@ -77,9 +83,15 @@ function loadFactory() {
   return captured
 }
 
-/** 构造一个够用的 ctx，记录所有 slot 注册 */
-function makeCtx() {
+/**
+ * 构造一个**与 cordis 同构**的 ctx：
+ * 只有 inject 里声明过的服务才会挂在 ctx 上，其余为 undefined。
+ * 这样 inject 少写一个，apply 就会在这里抛错，而不是等到线上。
+ */
+function makeCtx(injectList) {
+  const declared = new Set(injectList)
   const registered = []
+
   const slots = {
     inject(name, thunk) {
       if (typeof thunk === 'function') thunk()
@@ -89,32 +101,50 @@ function makeCtx() {
       return { ...desc, comp }
     },
   }
+
   const ctx = {
-    slots,
-    get(key) { return key === 'slots' ? slots : undefined },
-    effect(fn) { if (typeof fn === 'function') fn() },
-    locale: {
-      register() {},
-      bind() { return (k) => k },
+    get(key) {
+      if (!declared.has(key)) return undefined
+      return key === 'slots' ? slots : undefined
     },
-    connection: { fetch: async () => ({}) },
-    uiWorkspace: {},
+    effect(fn) { if (typeof fn === 'function') fn() },
     console,
   }
+
+  if (declared.has('slots')) ctx.slots = slots
+  if (declared.has('locale')) {
+    ctx.locale = {
+      register() {},
+      bind() { return (k) => k },
+    }
+  }
+  if (declared.has('connection')) {
+    ctx.connection = { fetch: async () => ({}), rpc: { call: async () => ({}) } }
+  }
+  if (declared.has('uiWorkspace')) {
+    ctx.uiWorkspace = {
+      listDirectory: async () => ({ entries: [] }),
+      createDirectory: async () => ({}),
+    }
+  }
+
   return { ctx, registered }
 }
 
-test('合并入口只注册一个侧栏项和一个主面板', () => {
+/** 载入并返回 client 模块 */
+function loadClient() {
   const mod = loadFactory()
-  assert.equal(mod.id, 'dsh-bigfish', '模块 id 应为合并后的包名')
-
   const React = makeReact()
-  const client = mod.factory((name) => (name === 'react' ? React : undefined))
-  assert.ok(client, 'factory 应返回客户端模块')
+  return { mod, client: mod.factory((name) => (name === 'react' ? React : undefined)) }
+}
+
+test('合并入口只注册一个侧栏项和一个主面板', () => {
+  const { mod, client } = loadClient()
+  assert.equal(mod.id, 'dsh-bigfish', '模块 id 应为合并后的包名')
   assert.ok(Array.isArray(client.inject), 'inject 应为数组')
   assert.equal(typeof client.apply, 'function', 'apply 应为函数')
 
-  const { ctx, registered } = makeCtx()
+  const { ctx, registered } = makeCtx(client.inject)
   client.apply(ctx)
 
   const sidebars = registered.filter((r) => r.name === 'sidebar.panellist')
@@ -131,13 +161,10 @@ test('合并入口只注册一个侧栏项和一个主面板', () => {
 })
 
 test('两个子面板都以 embedded 模式启动，没有各自注册', () => {
-  const mod = loadFactory()
-  const React = makeReact()
-  const client = mod.factory((name) => (name === 'react' ? React : undefined))
-  const { ctx, registered } = makeCtx()
+  const { client } = loadClient()
+  const { ctx, registered } = makeCtx(client.inject)
   client.apply(ctx)
 
-  // 如果 embedded 没生效，会出现 dafeiyu-memory / dafeiyu-mood 这两个 id
   const ids = registered.map((r) => r.id || r.key)
   assert.ok(!ids.includes('dafeiyu-memory'), '记忆面板不该再自己注册侧栏')
   assert.ok(!ids.includes('dafeiyu-mood'), '心情面板不该再自己注册侧栏')
@@ -145,17 +172,46 @@ test('两个子面板都以 embedded 模式启动，没有各自注册', () => {
 })
 
 test('主面板渲染时不会抛错', () => {
-  const mod = loadFactory()
-  const React = makeReact()
-  const client = mod.factory((name) => (name === 'react' ? React : undefined))
-  const { ctx, registered } = makeCtx()
+  const { client } = loadClient()
+  const { ctx, registered } = makeCtx(client.inject)
   client.apply(ctx)
 
   const Shell = registered.find((r) => r.name === 'main').comp
   const tree = Shell()
   assert.ok(tree, 'Shell 应返回元素')
   assert.equal(tree.props.className, 'bf-shell')
-
-  // 结构：tabs + body
   assert.equal(tree.children.length, 2, 'Shell 应有 tabs 与 body 两块')
+})
+
+/**
+ * 回归测试：inject 必须覆盖两个子面板用到的全部服务。
+ * 少写一个，apply 会在真实环境抛错并导致整个客户端起不来。
+ */
+test('inject 覆盖两个子面板用到的全部服务', () => {
+  const { client } = loadClient()
+
+  // 记忆面板的 apply 会调 ctx.locale.register / ctx.locale.bind；
+  // 它的组件渲染时会用 ctx.connection.rpc 与 ctx.uiWorkspace。
+  for (const svc of ['slots', 'locale', 'connection', 'uiWorkspace']) {
+    assert.ok(
+      client.inject.includes(svc),
+      `inject 缺少 "${svc}"。缺了它 cordis 不会把该服务挂到 ctx 上，` +
+        '子面板 apply 时会拿到 undefined 并抛错，整个客户端 entry 激活失败。',
+    )
+  }
+})
+
+/**
+ * 反向验证：如果 inject 真的少了 locale，apply 必须抛错。
+ * 这条不是测产品行为，是证明上面那个断言确实能拦住事故。
+ */
+test('inject 缺少 locale 时 apply 会抛错（证明约束有效）', () => {
+  const { client } = loadClient()
+  const broken = client.inject.filter((s) => s !== 'locale')
+  const { ctx } = makeCtx(broken)
+
+  assert.throws(
+    () => client.apply(ctx),
+    '少了 locale 时应当抛错，否则说明 mock 没有与 cordis 同构',
+  )
 })

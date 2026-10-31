@@ -156,7 +156,12 @@ ${moodBody}
     }
 
     return {
-      inject: ['slots'],
+      /* inject 必须覆盖两个子面板用到的全部服务。
+         这里**从子模块自身的 inject 取并集**，而不是手写 —— 否则子模块哪天多用
+         一个服务（比如 locale），外壳不知道，运行时 ctx.locale 就是 undefined，
+         cordis 直接判定这个 entry 激活失败，整个客户端起不来。
+         这就是 2026-10-31 第一次安装时 "web boot: 1 entry did not activate" 的原因。 */
+      inject: [...new Set(['slots', ...memoryModule.inject, ...moodModule.inject])],
       apply(ctx) {
         const style = document.createElement('style')
         style.setAttribute('data-plugin-css', 'dsh-bigfish')
