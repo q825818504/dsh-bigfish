@@ -2760,23 +2760,10 @@ window.__ModuleLoader__.load({
         const 项 = []
         项.push(h('div', { key: 'names', 'data-fm-sec': '' },
           h('div', { 'data-fm-h': '' }, '称呼'),
-          h('div', { 'data-fm-note': '' }, '这两个名字会写进判断提示词；换了名字，心情描述里也跟着换。'),
-          h('div', { 'data-fm-row': '' },
-            h('div', { 'data-fm-grow': '' }, h('div', { 'data-fm-label': '' }, 'TA 叫什么（被关心的那个人）')),
-            h('input', {
-              'data-fm-input': '', value: cfg.ownerName || '',
-              placeholder: '用户',
-              onChange: (e) => setCfg((c) => ({ ...c, ownerName: e.target.value })),
-              onBlur: () => patch({ ownerName: cfg.ownerName }, '称呼'),
-            })),
-          h('div', { 'data-fm-row': '' },
-            h('div', { 'data-fm-grow': '' }, h('div', { 'data-fm-label': '' }, 'TA 自己叫什么（有心情的那个人）')),
-            h('input', {
-              'data-fm-input': '', value: cfg.selfName || '',
-              placeholder: '伙伴',
-              onChange: (e) => setCfg((c) => ({ ...c, selfName: e.target.value })),
-              onBlur: () => patch({ selfName: cfg.selfName }, '称呼'),
-            })),
+          /* ⭐ 2.4.0：名字和称呼搬去「灵魂」板块了 —— 那里是唯一真源。
+             这里以前也存一份，改一处另一边不生效，还容易不一致。 */
+          h('div', { 'data-fm-note': '' },
+            '她的名字和怎么称呼你，现在都在「灵魂」里设置 —— 那里改了，心情判断会跟着用新的。'),
           h('div', { 'data-fm-row': '' },
             h('div', { 'data-fm-grow': '' },
               h('div', { 'data-fm-label': '' }, 'TA 平时怎么叫你（昵称）'),
@@ -3156,7 +3143,36 @@ window.__ModuleLoader__.load({
         ),
 
         !data.exists && h('div', { className: 'bfs-msg bfs-msg-warn', style: { marginBottom: '16px' } },
-          '这个范围还没设过灵魂，下面是一份起点草稿。改完点保存就是她的第一版。'),
+          h('strong', null, '这个范围还没设过灵魂 —— 现在她说话是个通用助手，不像大肥鱼。'),
+          h('br'),
+          '下面是一份已经写好的起点（大肥鱼：蓝色鲸鱼娘、贪吃、嘴硬、有自尊、体贴）。',
+          h('br'),
+          '点「立即启用」直接用它，之后随时可以在下面改；也可以直接编辑再保存。'),
+        !data.exists && h('div', { style: { marginBottom: '16px' } },
+          h('button', {
+            className: 'bfs-btn bfs-btn-primary',
+            disabled: saving,
+            onClick: () => {
+              if (!window.confirm('把下面这份起点写进这个范围，作为她的第一版人格？')) return
+              setSaving(true)
+              setMsg({ kind: '', text: '' })
+              fetch(ROUTE, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                // 传当前草稿（= 默认人格），服务端 normalize 后落盘
+                body: JSON.stringify({ soul: draft }),
+              })
+                .then((r) => r.json())
+                .then((d) => {
+                  setSaving(false)
+                  if (!d.ok) { setMsg({ kind: 'err', text: d.error || '启用失败' }); return }
+                  接入新版本(d.soul)
+                  setMsg({ kind: 'ok', text: '✓ 人格已启用，从下一轮对话开始生效' })
+                  if (typeof load === 'function') load()
+                })
+                .catch((e) => { setSaving(false); setMsg({ kind: 'err', text: e.message || String(e) }) })
+            },
+          }, saving ? '启用中…' : '立即启用这份人格')),
         data.error && h('div', { className: 'bfs-msg bfs-msg-err', style: { marginBottom: '16px' } },
           '⚠ 灵魂文件读取异常，已回退默认：' + data.error),
 

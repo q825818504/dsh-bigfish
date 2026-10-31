@@ -33,6 +33,7 @@ import {
   apply as applySoul,
   inject as soulInject,
   name as soulName,
+  getSoulIdentity,
 } from './lib/soul/index.js'
 
 /** 合并后的插件名（cordis 里用它标识这一条） */
@@ -72,7 +73,11 @@ export function apply(ctx, config) {
     }
   }
   run(memoryName, () => applyMemory(ctx, config))
-  run(moodName, () => applyMood(ctx))
+  /* ⭐ 2.4.0：名字与称呼的唯一真源是灵魂。
+     心情判断要把「你是『大肥鱼』，是『爸爸』的伴侣」写进提示词，
+     以前它自己存了一份 selfName/ownerName，和灵魂重复 —— 改了一边另一边不生效。
+     现在把灵魂的**只读**接口传给它，心情不再自己存这两个字段。 */
+  run(moodName, () => applyMood(ctx, { 取身份: getSoulIdentity }))
   run(soulName, () => applySoul(ctx))
   // 有失败也返回：cordis 只关心 apply 有没有抛。详情挂在 ctx 上供诊断读取。
   if (failures.length) {
