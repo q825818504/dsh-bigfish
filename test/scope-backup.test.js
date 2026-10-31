@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { MemoryStore } from '../lib/memory/store.js';
 import { sessionScopeIds } from '../lib/memory/adapter.js';
@@ -691,4 +692,85 @@ test('write-data-root without copyData only changes the path', async t => {
   assert.equal(response.result.value.copy, null, '没勾选就不复制');
   assert.equal(existsSync(新根), false, '没勾选时一个新目录都不该出现');
   assert.equal(JSON.parse(readFileSync(join(home, 'bigfish', 'root.json'), 'utf8')).dataRoot, 新根);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 2.3.0 回归：审计里那两个「迟早出事」的问题
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+// ⚠ A1：心情模块保存一次配置，曾经会把 dataRoot 永久抹掉。
+//   根因是 loadConfig() 只返回白名单字段，patchConfig 拿它做 {...cfg} 再整份写盘。
+//   这条用例就是那个场景的回归。
+test('saving mood config keeps unknown fields such as dataRoot (A1 regression)', async t => {
+  const home = temporaryDirectory();
+  const previousHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+  t.after(() => {
+    rmSync(home, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previousHome;
+  });
+
+  // 造一份带「未来字段」的真实配置
+  const 配置目录 = join(home, 'bigfish-mood');
+  mkdirSync(配置目录, { recursive: true });
+  const 配置文件 = join(配置目录, 'config.json');
+  const 自定义根 = 'D:\\某人的\\数据';
+  writeFileSync(配置文件, JSON.stringify({
+    slots: [{ id: 'x', sessions: [] }],
+    模式: 'workspace',
+    selfName: '伙伴',
+    dataRoot: 自定义根,          // ← 老版本会被抹掉的那个
+    某个将来才有的字段: { a: 1 },  // ← 同一个坑，任何白名单外的字段都会丢
+  }), 'utf8');
+
+  const moodPath = join(process.cwd(), 'lib', 'mood', 'index.js');
+  const mood = await import(pathToFileURL(moodPath).href);
+  const cfg = mood.__测试.读配置();
+
+  // 读的时候就该看见它们
+  assert.equal(cfg.dataRoot, 自定义根, '读配置必须保留 dataRoot');
+  assert.deepEqual(cfg.某个将来才有的字段, { a: 1 }, '未知字段也不能丢');
+
+  // 改一个正常开关，然后整份写回
+  const next = mood.__测试.合并配置(cfg, { selfName: '大肥鱼' });
+  const { default: fs } = await import('node:fs');
+  writeFileSync(配置文件, JSON.stringify(next, null, 2), 'utf8');
+
+  const 落盘 = JSON.parse(readFileSync(配置文件, 'utf8'));
+  assert.equal(落盘.dataRoot, 自定义根, '保存后 dataRoot 必须还在');
+  assert.deepEqual(落盘.某个将来才有的字段, { a: 1 }, '保存后未知字段也必须还在');
+  assert.equal(落盘.selfName, '大肥鱼', '正常字段照常生效');
+});
+
+// ⚠ A2：三方默认数据根曾经各算各的 —— root.json 为空时记忆和心情会分居。
+test('default data root is one shared value across memory, mood and soul (A2 regression)', async t => {
+  const home = temporaryDirectory();
+  const previousHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+  t.after(() => {
+    rmSync(home, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previousHome;
+  });
+
+  const store = await import(pathToFileURL(join(process.cwd(), 'lib', 'scope-store.js')).href);
+  const expected = join(home, 'bigfish', 'scopes');
+
+  // 没有 root.json → 三边都用同一个默认
+  assert.equal(store.resolveDataRoot(), expected);
+  assert.equal(store.defaultDataRoot(), expected);
+  // 没有 root.json 时，fallback 是「种子候选」，由调用方决定要不要用它。
+  // resolveDataRoot 不做这个决定 —— 传了 fallback 就返回它。
+  // 记忆侧正是靠这一点，把 profile 的 scopeDirectory 只当种子用。
+  assert.equal(store.resolveDataRoot('D:\\随便'), 'D:\\随便');
+
+  // 有 root.json → 三边都用自定义值
+  store.writeDataRoot('D:\\统一的地方');
+  assert.equal(store.resolveDataRoot(), 'D:\\统一的地方');
+  assert.equal(store.resolveDataRoot('D:\\随便'), 'D:\\统一的地方');
+
+  // 恢复默认（写入空串）→ 回到共同默认，**不能**被 fallback 拉走
+  store.writeDataRoot('');
+  assert.equal(store.resolveDataRoot(), expected, '恢复默认后不能又被 profile 的值拉回去');
 });

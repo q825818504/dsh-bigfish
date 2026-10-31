@@ -106,3 +106,11 @@ test/                 七份测试
 
 MIT。心情板块派生自 [Yuuyuko-uu/dsh-feiyu-mood](https://github.com/Yuuyuko-uu/dsh-feiyu-mood) v0.7.6，
 原著作权归原作者，改动清单见 [NOTICE](NOTICE)。
+
+## 文档
+
+- [产品说明](docs/产品.md) —— 这个插件能做什么
+- [使用与运维](docs/使用.md) —— 数据存在哪、怎么改目录、怎么排查
+- [历史存档](docs/历史.md) —— 合并前两个子插件的记录
+
+版本变更看 [CHANGELOG.md](CHANGELOG.md)。

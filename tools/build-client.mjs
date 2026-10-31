@@ -26,6 +26,9 @@ import { dirname, join } from 'node:path'
 const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
 
+// 默认写包根的 client.js；调试时可设 BF_CLIENT_OUT 改写到别处
+const OUT_PATH = process.env.BF_CLIENT_OUT || join(root, 'client.js')
+
 /** 取 `factory(...) {` 之后、`  },` 之前的函数体（首尾各去掉一行包装） */
 function extractFactoryBody(relPath) {
   const src = readFileSync(join(root, relPath), 'utf8')
@@ -52,21 +55,23 @@ function extractFactoryBody(relPath) {
 
 const memoryBody = extractFactoryBody('lib/memory/client.js')
 const moodBody = extractFactoryBody('lib/mood/client.js')
+const soulBody = extractFactoryBody('lib/soul/client.js')
 const settingsSrc = readFileSync(join(root, 'lib/shell/settings.js'), 'utf8')
 
 const out = `/**
  * dsh-bigfish —— 合并后的客户端入口（构建产物，请勿手改）
  * ============================================================================
- * 由 tools/build-client.mjs 从以下两个源文件生成：
+ * 由 tools/build-client.mjs 从以下三个源文件生成：
  *   · lib/memory/client.js  （记忆面板）
  *   · lib/mood/client.js    （心情面板）
+ *   · lib/soul/client.js    （灵魂面板）
  *
  * 结构：
  *   一个 sidebar.panellist 入口（id = dafeiyu，显示「大肥鱼」）
- *   一个 main 面板，内部按板块切换：记忆 / 心情
+ *   一个 main 面板，内部按板块切换：记忆 / 心情 / 灵魂 / 设置
  *
- * 两个子面板各自在 IIFE 里隔离，互不污染变量；样式前缀分别是 dfm- 与 fm-，
- * 不会互相覆盖。
+ * 三个子面板各自在 IIFE 里隔离，互不污染变量；样式前缀分别是 dfm-、fm-、
+ * bfs-，不会互相覆盖。
  * ============================================================================
  */
 window.__ModuleLoader__.load({
@@ -90,6 +95,13 @@ ${moodBody}
     })()
 
     /* ======================================================================
+     * 灵魂板块
+     * ==================================================================== */
+    const soulModule = (function () {
+${soulBody}
+    })()
+
+    /* ======================================================================
      * 外壳：一个侧栏入口 + 板块切换
      * ==================================================================== */
     const PANEL_ID = 'dafeiyu'
@@ -97,6 +109,7 @@ ${moodBody}
 
     let MemoryPanel = null
     let MoodPanel = null
+    let SoulPanel = null
     let SettingsPanel = null
 
     /* ── 设置面板：源文件 lib/shell/settings.js，构建时内联 ──
@@ -107,6 +120,7 @@ ${settingsSrc}
     const TABS = [
       { key: 'memory', label: '记忆' },
       { key: 'mood', label: '心情' },
+      { key: 'soul', label: '灵魂' },
       { key: 'settings', label: '设置' },
     ]
 
@@ -134,7 +148,10 @@ ${settingsSrc}
 
     function Shell() {
       const [tab, setTab] = React.useState('memory')
-      const Active = tab === 'memory' ? MemoryPanel : tab === 'mood' ? MoodPanel : SettingsPanel
+      const Active = tab === 'memory' ? MemoryPanel
+        : tab === 'mood' ? MoodPanel
+          : tab === 'soul' ? SoulPanel
+            : SettingsPanel
       return h('div', { className: 'bf-shell' },
         h('div', { className: 'bf-tabs', role: 'tablist', 'aria-label': '大肥鱼板块' },
           TABS.map((t) => h('button', {
@@ -169,7 +186,7 @@ ${settingsSrc}
          一个服务（比如 locale），外壳不知道，运行时 ctx.locale 就是 undefined，
          cordis 直接判定这个 entry 激活失败，整个客户端起不来。
          这就是 2026-10-31 第一次安装时 "web boot: 1 entry did not activate" 的原因。 */
-      inject: [...new Set(['slots', ...memoryModule.inject, ...moodModule.inject])],
+      inject: [...new Set(['slots', ...memoryModule.inject, ...moodModule.inject, ...soulModule.inject])],
       apply(ctx) {
         const style = document.createElement('style')
         style.setAttribute('data-plugin-css', 'dsh-bigfish')
@@ -183,8 +200,10 @@ ${settingsSrc}
         // 两个子面板以嵌入模式启动：挂样式、建 Panel，但不注册侧栏
         memoryModule.apply(ctx, { embedded: true })
         moodModule.apply(ctx, { embedded: true })
+        soulModule.apply(ctx, { embedded: true })
         MemoryPanel = memoryModule.getPanel()
         MoodPanel = moodModule.getPanel()
+        SoulPanel = soulModule.getPanel()
 
         // 设置面板：记忆走 connection rpc，心情走 HTTP（两套都是现成的）
         SettingsPanel = 创建设置面板(React, h, {
@@ -220,5 +239,5 @@ ${settingsSrc}
 })
 `
 
-writeFileSync(join(root, 'client.js'), out, 'utf8')
-console.log(`已生成 client.js（${(out.length / 1024).toFixed(1)} KB）`)
+writeFileSync(OUT_PATH, out, 'utf8')
+console.log(`已生成 ${OUT_PATH}（${(out.length / 1024).toFixed(1)} KB）`)

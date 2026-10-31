@@ -29,15 +29,22 @@ import {
   name as moodName,
 } from './lib/mood/index.js'
 
+import {
+  apply as applySoul,
+  inject as soulInject,
+  name as soulName,
+} from './lib/soul/index.js'
+
 /** 合并后的插件名（cordis 里用它标识这一条） */
 export const name = 'bigfish'
 
 /**
- * 合并 inject。两边的依赖取并集：
+ * 合并 inject。三边的依赖取并集：
  *   记忆：sessions, sessionQuery, agents, systemPrompt, tools, connection, workspaceRegistry, settings
  *   心情：systemPrompt, agents, webServer, llm, timer
+ *   灵魂：systemPrompt, tools, webServer（全被前两者覆盖，并集不变）
  */
-export const inject = [...new Set([...memoryInject, ...moodInject])]
+export const inject = [...new Set([...memoryInject, ...moodInject, ...soulInject])]
 
 /**
  * 对外配置仍沿用记忆插件那套（bank / bindingMode / recallChars / ...）。
@@ -48,15 +55,34 @@ export const inject = [...new Set([...memoryInject, ...moodInject])]
 export const Config = MemoryConfig
 
 /**
- * 装配两个模块。
+ * 装配三个模块：记忆 → 心情 → 灵魂。
  *
- * @param {object} ctx   cordis 上下文
- * @param {object} config  记忆模块的配置（bank / bindingMode / ...）
+ * ⚠ 每个模块单独 try/catch（architecture.md L5）。
+ *   合并前它们同生共死：灵魂里任何一处手误抛错，会把记忆和心情一起带崩，
+ *   整条 web boot 失败。现在一个模块挂了只丢它自己，其余照常。
  */
 export function apply(ctx, config) {
-  applyMemory(ctx, config)
-  applyMood(ctx)
+  const failures = []
+  const run = (label, fn) => {
+    try {
+      fn()
+    } catch (e) {
+      failures.push({ module: label, message: e && e.message ? e.message : String(e) })
+      console.error(`[bigfish] ${label} 模块启动失败，其余模块继续：`, e)
+    }
+  }
+  run(memoryName, () => applyMemory(ctx, config))
+  run(moodName, () => applyMood(ctx))
+  run(soulName, () => applySoul(ctx))
+  // 有失败也返回：cordis 只关心 apply 有没有抛。详情挂在 ctx 上供诊断读取。
+  if (failures.length) {
+    try {
+      ctx.set?.('bigfish:failures', failures)
+    } catch {
+      /* 诊断写入失败不影响启动 */
+    }
+  }
 }
 
-/** 供测试与诊断使用：两个子模块的标识 */
-export const parts = { memory: memoryName, mood: moodName }
+/** 供测试与诊断使用：三个子模块的标识 */
+export const parts = { memory: memoryName, mood: moodName, soul: soulName }
