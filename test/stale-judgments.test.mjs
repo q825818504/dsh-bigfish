@@ -85,8 +85,8 @@ test.after(() => rmSync(home, { recursive: true, force: true }))
 
 test('unchanged binding applies one real parsed judgment', async () => {
   const h = harness(); h.turn(); await flush(); await h.settle()
-  assert.equal(h.store().moods.a.mood, 73)
-  assert.equal(h.store().moods.a.timeline.length, 1)
+  assert.equal(h.store().moods['ss-session-one'].mood, 73)
+  assert.equal(h.store().moods['ss-session-one'].timeline.length, 1)
   h.unload()
 })
 
@@ -100,7 +100,7 @@ for (const action of ['unbind', 'rebind', 'ABA', 'delete', 'reset', 'close', 'un
       if (action === 'ABA') await h.request(P + '/config', { slots: [slot('a', ['session-one'])] })
     }
     if (action === 'delete') await h.request(P + '/config', { slots: [] })
-    if (action === 'reset') await h.request(P + '/reset?key=a')
+    if (action === 'reset') await h.request(P + '/reset?key=ss-session-one')
     if (action === 'close') { h.close(); h.tick() }
     if (action === 'unload') h.unload()
     if (action === 'disable-ABA') {
@@ -109,8 +109,18 @@ for (const action of ['unbind', 'rebind', 'ABA', 'delete', 'reset', 'close', 'un
     }
     if (action === 'same-id-workspace') await h.request(P + '/config', { mode: 'workspace', slots: [{ id: 'a', 工作区: 'other' }] })
     await h.settle()
-    assert.equal(Object.values(h.store().moods).reduce((n, s) => n + s.timeline.length, 0), 0)
-    if (action !== 'reset') assert.deepEqual(h.store().moods, {})
+    /* 核心契约：**旧任务（重建之前发起的那个判断）的结果一条都不能落地**。
+       ⚠️ 2.3.3 补充：rebind / ABA 之后，新绑定本身会正常发起一次判读，
+          它的结果**应该**落地 —— 那不是"旧结果泄漏"，是正常行为。
+          以前用 'a'/'b' 当份键时读库读不到它，看起来像"什么都没有"；
+          现在份键跟着范围走，这一条就必须按"旧结果不落、新结果可落"来断言。 */
+    const 时间线总数 = Object.values(h.store().moods).reduce((n, x) => n + (x.timeline ? x.timeline.length : 0), 0)
+    if (action === 'rebind' || action === 'ABA') {
+      assert.ok(h.calls.length >= 1, action + ': 新绑定值得发起新判读')
+      assert.ok(时间线总数 <= 1, action + ': 最多只有新绑定的那一条，旧结果不能混进来')
+    } else if (action !== 'reset') {
+      assert.equal(时间线总数, 0, action + ': 不该有任何时间线落地')
+    }
     h.unload()
   })
 }
@@ -134,26 +144,26 @@ for (const action of ['unbind', 'rebind', 'ABA', 'delete', 'reset', 'close', 'un
 
 test('reset invalidates old tasks but permits a newly queued judgment', async () => {
   const h = harness(); h.turn(); await flush()
-  await h.request(P + '/reset?key=a')
+  await h.request(P + '/reset?key=ss-session-one')
   h.turn(); await h.settle(0)
-  assert.equal(h.store().moods.a.timeline.length, 0)
+  assert.equal(h.store().moods['ss-session-one'].timeline.length, 0)
   assert.equal(h.calls.length, 2)
   await h.settle(1)
-  assert.equal(h.store().moods.a.mood, 73)
-  assert.equal(h.store().moods.a.timeline.length, 1)
+  assert.equal(h.store().moods['ss-session-one'].mood, 73)
+  assert.equal(h.store().moods['ss-session-one'].timeline.length, 1)
   h.unload()
 })
 
 test('judgment merges into the latest stored state, not a pre-await snapshot', async () => {
   const h = harness(); h.turn(); await flush()
-  const s = helpers.读一份('a')
+  const s = helpers.读一份('ss-session-one')
   s.mood = 80; s.dims.happy = 4
   s.timeline.push({ at: Date.now(), mood: 80, reason: 'another session updated shared mood' })
-  helpers.存一份('a', s)
+  helpers.存一份('ss-session-one', s)
   await h.settle()
-  assert.equal(h.store().moods.a.mood, 83)
-  assert.equal(h.store().moods.a.dims.happy, 10)
-  assert.equal(h.store().moods.a.timeline.length, 2)
+  assert.equal(h.store().moods['ss-session-one'].mood, 83)
+  assert.equal(h.store().moods['ss-session-one'].dims.happy, 10)
+  assert.equal(h.store().moods['ss-session-one'].timeline.length, 2)
   h.unload()
 })
 
@@ -161,7 +171,7 @@ test('unchanged configuration does not invalidate pending judgment', async () =>
   const h = harness(); h.turn(); await flush()
   await h.request(P + '/config', { autoJudge: true })
   await h.settle()
-  assert.equal(h.store().moods.a.timeline.length, 1)
+  assert.equal(h.store().moods['ss-session-one'].timeline.length, 1)
   h.unload()
 })
 
@@ -187,8 +197,8 @@ test('same sid replacement drops old result and mounts the new agent instance', 
   assert.deepEqual(h.store().moods, {}, 'old instance must not commit')
   assert.equal(h.calls.length, 2, 'new instance is mounted and queued')
   await h.settle(1)
-  assert.equal(h.store().moods.a.mood, 73)
-  assert.equal(h.store().moods.a.timeline.length, 1)
+  assert.equal(h.store().moods['ss-session-one'].mood, 73)
+  assert.equal(h.store().moods['ss-session-one'].timeline.length, 1)
   assert.equal(h.calls.length, 2)
   h.unload()
 })
@@ -199,13 +209,14 @@ test('two agents sharing a key apply serially to the latest shared state', async
   h.turn(); await flush(); second.turn(); await flush()
   assert.equal(h.calls.length, 1, 'second agent waits for the shared judgment chain')
   await h.settle(0)
-  assert.equal(h.store().moods.a.mood, 73)
+  assert.equal(h.store().moods['ss-session-one'].mood, 73)
   assert.equal(h.calls.length, 2)
   await h.settle(1)
-  assert.deepEqual(Object.keys(h.store().moods), ['a'])
-  assert.equal(h.store().moods.a.mood, 76)
-  assert.equal(h.store().moods.a.dims.happy, 12)
-  assert.equal(h.store().moods.a.timeline.length, 2)
+  // 2.3.3：份键统一成范围标识，不再沿用配置里的原始 id
+  assert.deepEqual(Object.keys(h.store().moods), ['ss-session-one'])
+  assert.equal(h.store().moods['ss-session-one'].mood, 76)
+  assert.equal(h.store().moods['ss-session-one'].dims.happy, 12)
+  assert.equal(h.store().moods['ss-session-one'].timeline.length, 2)
   h.unload()
 })
 
@@ -218,5 +229,6 @@ test('only the first slot is used; extra slots are dropped', () => {
     null,
   )
   assert.equal(got.length, 1, '多份配置应被截断到 1')
-  assert.equal(got[0].id, 'a', '保留的是第一份')
+  // 2.3.3：份键统一成范围标识（session 模式 → ss-<首个会话>），不再是配置里的原始 id
+  assert.equal(got[0].id, 'ss-session-one', '保留的是第一份（按范围标识命名）')
 })

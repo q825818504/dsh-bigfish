@@ -795,3 +795,11 @@ test('default data root is one shared value across memory, mood and soul (A2 reg
   store.writeDataRoot('');
   assert.equal(store.resolveDataRoot(), expected, '恢复默认后不能又被 profile 的值拉回去');
 });
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 2.3.3 回归：记忆与心情必须指向**同一个范围目录**
+ *
+ * 以前的 bug：心情的 范围键() 会直接沿用"份"的 id（老配置里是 'a'/'__default__'），
+ * 而记忆用的是 ws-<uuid> / ss-<会话>。于是同一次对话，记忆存 ws-xxx 目录、
+ * 心情存 __default__ 目录 —— 一一对应就断了，界面上看起来就是"数据不是同一份"。
+ * ═══════════════════════════════════════════════════════════════════════════ */

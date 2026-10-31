@@ -112,6 +112,7 @@ window.__ModuleLoader__.load({
         loadErrorBody: '请检查大肥鱼记忆插件是否启用、数据库是否可访问，然后重试。',
         retry: '重试',
         storageTitle: '本地存储',
+        storageNote: '磁盘占用含 WAL/SHM 预分配的空页 —— 一个全新的空库也会占几百 KB。判断有没有记忆请看右边的消息与检索片段数。',
         dbTotal: 'SQLite 文件总量',
         mainFile: '主库',
         walFile: 'WAL',
@@ -163,7 +164,9 @@ window.__ModuleLoader__.load({
         strictScopeBackfilling: '正在回灌该范围的历史对话…',
         strictScopeBackfilled: '已回灌会话数',
         strictScopeBackfillFailed: '回灌失败',        scopeOfBank: '全库',
-        dbSharedNote: '整库共用一个文件，无法按范围切分',
+        // 2.3.3：这句是 1.x 时代的说法（那时确实整库一个文件）。现在每个范围一个独立库，
+        // 统计口径就是「这一个库的文件」；说成「无法按范围切分」会让人以为换范围还能读到旧内容。
+        dbSharedNote: '当前范围一个独立库；上面的数字只算这一个库的文件',
         cellsTitle: '记忆星图',
         cellsSub: '每一颗星是一段真实对话。越长的记忆越大越亮，远处的星会变暗变小，形成景深；悬停看时间，点开读原文。只显示当前绑定范围内的记忆。',
         cellsUnit: '颗记忆',
@@ -260,6 +263,7 @@ window.__ModuleLoader__.load({
         loadErrorBody: 'Check that the Big Fish Memory plugin is enabled and its database is accessible, then try again.',
         retry: 'Retry',
         storageTitle: 'Local storage',
+        storageNote: 'Disk usage includes preallocated WAL/SHM pages: a brand-new empty library still takes a few hundred KB. Judge by the message and chunk counts instead.',
         dbTotal: 'SQLite files total',
         mainFile: 'Main',
         walFile: 'WAL',
@@ -311,7 +315,7 @@ window.__ModuleLoader__.load({
         strictScopeBackfilling: 'Backfilling this scope from session logs…',
         strictScopeBackfilled: 'Sessions backfilled',
         strictScopeBackfillFailed: 'Backfill failed',        scopeOfBank: 'of',
-        dbSharedNote: 'One file shared by every scope — it cannot be split per session',
+        dbSharedNote: 'Each scope has its own library; these numbers cover this one only',
         cellsTitle: 'Memory star map',
         cellsSub: 'Each star is one real exchange. Longer memories grow bigger and brighter, distant stars dim and shrink for depth — hover for the time, click to read. Only the current binding scope is shown.',
         cellsUnit: 'memories',
@@ -2206,7 +2210,8 @@ window.__ModuleLoader__.load({
             data ? h(React.Fragment, null,
               h('section', { className: 'dfm-section', 'aria-labelledby': 'dfm-storage-title' },
                 h('div', { className: 'dfm-section-head' },
-                  h('h2', { id: 'dfm-storage-title', className: 'dfm-section-title' }, t('storageTitle'))),
+                  h('h2', { id: 'dfm-storage-title', className: 'dfm-section-title' }, t('storageTitle')),
+                  h('p', { className: 'dfm-note' }, t('storageNote'))),
                 h('dl', { className: 'dfm-overview' }, overviewItems.map(item =>
                   h('div', { key: item.id, className: item.total ? 'dfm-metric dfm-metric--total' : 'dfm-metric' },
                     h('dt', null, item.label),
@@ -3387,6 +3392,11 @@ function 创建设置面板(React, h, 依赖) {
       默认根: rootInfo.defaultRoot || '',
       根配置文件: rootInfo.storePath || '',
       数据根存在: rootInfo.exists !== false,
+      // 当前进程实际在用的根 / 重启后才会用的根
+      当前根: rootInfo.activeRoot || '',
+      待生效根: rootInfo.pendingRoot || '',
+      需要重启: rootInfo.restartNeeded === true,
+      待生效根存在: rootInfo.pendingExists !== false,
     }
   }
 
@@ -3431,6 +3441,9 @@ function 创建设置面板(React, h, 依赖) {
     .bf-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
     .bf-check input { margin: 0; cursor: pointer; }
     .bf-warn { font-size: 12px; color: #d9534f; line-height: 1.6; }
+    /* 2.3.3：中性提示。像「已经在这个目录了，不用复制」这种不是错误的提示，
+       不该用错误红 —— 那会让人以为出事了。 */
+    .bf-hint { font-size: 12px; color: #5b8fb9; line-height: 1.6; }
     .bf-ok { font-size: 12px; color: #3c9a5f; }
     .bf-path {
       font-family: ui-monospace, Consolas, monospace; font-size: 11px; opacity: .75;
@@ -3460,6 +3473,10 @@ function 创建设置面板(React, h, 依赖) {
     const [默认根, set默认根] = React.useState(缓存 ? 缓存.默认根 : '')
     const [根配置文件, set根配置文件] = React.useState(缓存 ? 缓存.根配置文件 : '')
     const [数据根存在, set数据根存在] = React.useState(缓存 ? 缓存.数据根存在 : true)
+    const [当前根, set当前根] = React.useState(缓存 ? 缓存.当前根 : '')
+    const [待生效根, set待生效根] = React.useState(缓存 ? 缓存.待生效根 : '')
+    const [需要重启, set需要重启] = React.useState(缓存 ? 缓存.需要重启 : false)
+    const [待生效根存在, set待生效根存在] = React.useState(缓存 ? 缓存.待生效根存在 : true)
     const [根保存中, set根保存中] = React.useState(false)
     const [根提示, set根提示] = React.useState('')
     const [根错误, set根错误] = React.useState('')
@@ -3487,6 +3504,10 @@ function 创建设置面板(React, h, 依赖) {
         set默认根(d.默认根)
         set根配置文件(d.根配置文件)
         set数据根存在(d.数据根存在)
+        set当前根(d.当前根)
+        set待生效根(d.待生效根)
+        set需要重启(d.需要重启)
+        set待生效根存在(d.待生效根存在)
       } catch (e) {
         set错误('读取配置失败：' + (e && e.message ? e.message : String(e)))
       } finally {
@@ -3566,7 +3587,8 @@ function 创建设置面板(React, h, 依赖) {
         set根错误('要填绝对路径，例如 D:\\大肥鱼\\数据')
         return
       }
-      if (v && 复制数据 && 预演 && 预演.ok === false) {
+      // same-root 只是「已经在这个目录」，不拦保存
+      if (v && 复制数据 && 预演 && 预演.ok === false && 预演.code !== 'same-root') {
         set根错误('目录没法复制：' + (预演.reason || '未知原因') + (预演.conflict && 预演.conflict.length ? '（里面已有：' + 预演.conflict.slice(0, 5).join('、') + '）' : ''))
         return
       }
@@ -3676,6 +3698,23 @@ function 创建设置面板(React, h, 依赖) {
           '留空 = 用默认目录（', 默认根 || '未确定', '）。填绝对路径后写到 ',
           根配置文件 || '<DSH_HOME>/bigfish/root.json', '，重启 DSH 生效。'),
 
+        /* ⭐ 2.3.3：把「现在在用哪个目录」和「重启后用哪个」分开写清楚。
+           以前只显示一个路径，用户改完目录看到记忆库路径还是旧的，
+           根本分不清是没保存还是没重启。 */
+        h('div', { style: { marginTop: '12px' } },
+          h('p', { className: 'bf-label' }, '当前正在使用'),
+          h('p', { className: 'bf-path' }, 当前根 || '（未确定）'),
+          需要重启
+            ? h(React.Fragment, null,
+                h('p', { className: 'bf-label', style: { marginTop: '8px' } }, '重启后切换为'),
+                h('p', { className: 'bf-path' }, 待生效根 || '（未确定）'),
+                h('p', { className: 'bf-warn', style: { marginTop: '6px' } },
+                  '已保存，但还没重启 —— 现在读写仍是上面那个目录。',
+                  待生效根存在
+                    ? '重启后记忆和心情都会切到新目录。'
+                    : '⚠ 新目录现在还不存在，重启后会是全新的空库；旧目录里的记忆不会自动跟过去。'))
+            : null),
+
         h('label', { className: 'bf-check', style: { marginTop: '10px' } },
           h('input', {
             type: 'checkbox', checked: 复制数据,
@@ -3690,15 +3729,18 @@ function 创建设置面板(React, h, 依赖) {
               '只改路径，数据留在原处。新目录若是空的，重启后会开一个全新的库 —— 旧记忆看不到。'),
 
         复制数据 && 预演
-          ? (预演.ok === false
-              ? h('p', { className: 'bf-warn' },
-                  '没法复制：', 预演.reason || '未知原因',
-                  预演.conflict && 预演.conflict.length
-                    ? '（目标里已有：' + 预演.conflict.slice(0, 5).join('、') + (预演.conflict.length > 5 ? ' 等' : '') + '）'
-                    : '')
-              : h('p', { className: 'bf-note' },
-                  '将复制 ', String(预演.files || 0), ' 个文件，共 ',
-                  ((Number(预演.bytes) || 0) / 1048576).toFixed(1), ' MB。'))
+          ? (预演.code === 'same-root'
+              // 已经在这个目录了 —— 这不是错误，用中性提示
+              ? h('p', { className: 'bf-hint' }, '当前已经在这个目录，不需要复制。')
+              : 预演.ok === false
+                ? h('p', { className: 'bf-warn' },
+                    '不能复制：', 预演.reason || '未知原因',
+                    预演.conflict && 预演.conflict.length
+                      ? '（目标里已有：' + 预演.conflict.slice(0, 5).join('、') + (预演.conflict.length > 5 ? ' 等' : '') + '）'
+                      : '')
+                : h('p', { className: 'bf-note' },
+                    '将复制 ', String(预演.files || 0), ' 个文件，共 ',
+                    ((Number(预演.bytes) || 0) / 1048576).toFixed(1), ' MB。'))
           : null,
 
         数据根 && !数据根存在

@@ -1,6 +1,6 @@
 {
   "name": "dsh-bigfish",
-  "version": "2.3.2",
+  "version": "2.3.3",
   "description": "大肥鱼：一个记得住、有情绪的 AI 伙伴。记忆、心情与灵魂合为一体，侧边栏单一入口、分板块展示。",
   "license": "MIT",
   "author": "Alime",
@@ -76,7 +76,8 @@
     "test:mood": "node ./test/bigfish-v1.test.mjs",
     "test:decay": "node ./test/decay.test.mjs",
     "test:stale": "node ./test/stale-judgments.test.mjs",
-    "test:root-move": "node ./test/data-root-migrate.test.js"
+    "test:root-move": "node ./test/data-root-migrate.test.js",
+    "test:scope-match": "node --test ./test/scope-match.test.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",

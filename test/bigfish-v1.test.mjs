@@ -123,7 +123,11 @@ test('an explicit config keeps its own mode instead of the default', () => {
   writeFileSync(join(dir, 'config.json'), JSON.stringify({ 模式: 'session', slots: [{ id: 'x', sessions: ['s1'] }] }))
   const cfg = helpers.读配置()
   assert.equal(cfg.模式, 'session')
-  assert.equal(cfg.slots[0].id, 'x')
+  /* ⭐ 2.3.3：份键不再沿用配置里的任意 id（'x'），而是统一成伙伴范围标识 'ss-<会话>'。
+     这是为了让记忆和心情指向同一个范围 —— 用 'x' 当键时，心情会落到 x 目录、
+     记忆落到 ws-/ss- 目录，两边就分开了。 */
+  assert.equal(cfg.slots[0].id, 'ss-s1', '份键统一成范围标识')
+  assert.deepEqual(cfg.slots[0].sessions, ['s1'])
   rmSync(join(dir, 'config.json'))
 })
 
@@ -403,7 +407,8 @@ test('集成：只有 plugin:hindsight 的一轮不会发起模型调用', async
   assert.equal(judged.length, 0, 'plugin:hindsight 的轮次不该调用模型')
   // apply() 启动时会落一份基线 state.json（mood=基线、timeline=[]），所以这里不能断言 moods 为空，
   // 要断言的是「没有新增任何时间线」。
-  const slot = helpers.读库().moods.k1
+  // 2.3.3：份键统一成范围标识，session 模式下就是 ss-s1
+  const slot = helpers.读库().moods['ss-s1']
   assert.ok(slot, '基线状态应该存在')
   assert.equal(slot.timeline.length, 0, '不该写入任何时间线')
   assert.equal(slot.mood, 70, '心情应该还停在基线')
