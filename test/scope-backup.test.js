@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -551,4 +551,54 @@ test('manifest and lock advertise both rc.2 and rc.3 without shipping tests', ()
   assert.ok(manifest.files.includes('cordis.patch.yml'));
   assert.ok(!manifest.files.includes('scope-backup.test.js'));
   assert.ok(!manifest.files.includes('measure-token-budget.mjs'));
+});
+
+// ⭐ 数据根目录必须能自选，而且不能存在 scope.json 里
+//   （scope.json 自己就住在数据根里，写进去会自指）。
+test('data root can be pointed anywhere and lives outside scope.json', async t => {
+  const directory = temporaryDirectory();
+  const home = temporaryDirectory();
+  const previousHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+
+  const fixture = createHostFixture({ database: join(directory, 'memory.sqlite3') }, {});
+  t.after(async () => {
+    await fixture.close();
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previousHome;
+  });
+
+  // 默认：没设置过自定义根，回退到启动时算出来的那个
+  let response = await invokeSettings(fixture, { action: 'read-data-root' });
+  assert.equal(response.result.ok, true);
+  assert.equal(response.result.value.dataRoot, '');
+  assert.ok(response.result.value.defaultRoot, 'must report the default root so the field can show it');
+  assert.equal(response.result.value.storePath, join(home, 'bigfish', 'root.json'));
+
+  // 写一个自定义根
+  const custom = join(directory, '自定义 数据');
+  response = await invokeSettings(fixture, { action: 'write-data-root', dataRoot: custom });
+  assert.equal(response.result.ok, true);
+  assert.equal(response.result.value.dataRoot, custom);
+  assert.equal(JSON.parse(readFileSync(join(home, 'bigfish', 'root.json'), 'utf8')).dataRoot, custom);
+  assert.equal(existsSync(join(directory, 'scope.json')), false, 'writing the root must not create a scope file');
+
+  // 读回来，并且如实报告目录还不存在（面板要能提醒）
+  response = await invokeSettings(fixture, { action: 'read-data-root' });
+  assert.equal(response.result.value.dataRoot, custom);
+  assert.equal(response.result.value.exists, false);
+
+  // 相对路径必须拒绝
+  response = await invokeSettings(fixture, { action: 'write-data-root', dataRoot: 'relative/path' });
+  assert.equal(response.result.ok, false);
+  assert.equal(JSON.parse(readFileSync(join(home, 'bigfish', 'root.json'), 'utf8')).dataRoot, custom, 'rejected write keeps the previous root');
+
+  // 清空 = 恢复默认
+  response = await invokeSettings(fixture, { action: 'write-data-root', dataRoot: '' });
+  assert.equal(response.result.ok, true);
+  assert.equal(response.result.value.dataRoot, '');
+  response = await invokeSettings(fixture, { action: 'read-data-root' });
+  assert.equal(response.result.value.dataRoot, '');
 });
