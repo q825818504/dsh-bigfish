@@ -84,6 +84,17 @@ function userEvent(sessionId, text, seq = 1) {
 }
 
 function createHostFixture(initialConfig, options = {}) {
+  /* ⚠ 2.3.0 自检抓到的坑：这个 fixture 会调真实的 apply()，而 apply() 现在会去读
+     <DSH_HOME>/bigfish/root.json 决定数据根。**测试绝不能碰真实家目录** ——
+     没设 DSH_HOME 时，一旦真实 root.json 存在，用例之间就互相污染，
+     结果还取决于机器上有没有那个文件（自检时就因此红了 3 条）。
+     所以：每次建 fixture 都换一个临时 DSH_HOME，且默认不写 root.json。 */
+  const 原Home = process.env.DSH_HOME
+  if (!options.keepDshHome) {
+    const 测试家 = mkdtempSync(join(tmpdir(), 'dafeiyu-home-'))
+    process.env.DSH_HOME = 测试家
+    options.onCleanup = [...(options.onCleanup ?? []), () => rmSync(测试家, { recursive: true, force: true })]
+  }
   const routes = new Map();
   const disposers = [];
   const sessions = options.sessions ?? [];
@@ -194,6 +205,14 @@ function createHostFixture(initialConfig, options = {}) {
       if (closed) return;
       closed = true;
       for (const dispose of disposers.splice(0).reverse()) await dispose();
+      // 归还 DSH_HOME：fixture 换过的临时家目录要清掉，别把环境变量留给后面的用例
+      for (const cleanup of (options.onCleanup ?? []).splice(0)) {
+        try { cleanup() } catch { /* 清理失败不影响测试结论 */ }
+      }
+      if (!options.keepDshHome) {
+        if (原Home === undefined) delete process.env.DSH_HOME
+        else process.env.DSH_HOME = 原Home
+      }
     },
   };
 }
@@ -562,7 +581,9 @@ test('data root can be pointed anywhere and lives outside scope.json', async t =
   const previousHome = process.env.DSH_HOME;
   process.env.DSH_HOME = home;
 
-  const fixture = createHostFixture({ database: join(directory, 'memory.sqlite3') }, {});
+  // 这条用例自己管 DSH_HOME（要断言 root.json 落在哪），
+  // 告诉 fixture 不要再换临时家目录
+  const fixture = createHostFixture({ database: join(directory, 'memory.sqlite3') }, { keepDshHome: true });
   t.after(async () => {
     await fixture.close();
     rmSync(directory, { recursive: true, force: true });
@@ -621,7 +642,7 @@ test('write-data-root with copyData moves the data and keeps the old folder', as
   库.capture({ session: 's@1000', eventKey: '1', role: 'user', content: '这条要跟着搬家', sourceTime: 1000 });
   库.close();
 
-  const fixture = createHostFixture({ database: join(旧根, 'ws-abc', 'memory-ws-abc.sqlite3'), strictScope: true, scopeDirectory: 旧根 }, {});
+  const fixture = createHostFixture({ database: join(旧根, 'ws-abc', 'memory-ws-abc.sqlite3'), strictScope: true, scopeDirectory: 旧根 }, { keepDshHome: true });
   t.after(async () => {
     await fixture.close();
     rmSync(directory, { recursive: true, force: true });
@@ -677,7 +698,7 @@ test('write-data-root without copyData only changes the path', async t => {
   mkdirSync(旧根, { recursive: true });
   writeFileSync(join(旧根, 'scope.json'), '{"version":1,"mode":"workspace","workspaceId":"abc"}', 'utf8');
 
-  const fixture = createHostFixture({ database: join(旧根, 'memory.sqlite3'), strictScope: true, scopeDirectory: 旧根 }, {});
+  const fixture = createHostFixture({ database: join(旧根, 'memory.sqlite3'), strictScope: true, scopeDirectory: 旧根 }, { keepDshHome: true });
   t.after(async () => {
     await fixture.close();
     rmSync(directory, { recursive: true, force: true });

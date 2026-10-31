@@ -325,8 +325,8 @@ test('9b 装配层对单个模块失败做隔离，apply 不抛', async () => {
 // 实机日志：`注册路由失败：webserver: duplicate exact route "/dsh-bigfish/soul"`。
 // 根因是 effect 回调返回了数组而不是清理函数，重复 apply 时旧路由没被拆掉。
 //
-// ⚠ routesRegistered 是模块级状态，用例之间会互相影响 ——
-//   所以每条用例都自己跑 effect 清理来复位，不依赖执行顺序。
+// ⚠ 2.3.0 起幂等由 ctx.effect 的生命周期负责（模块级布尔标记已删除）——
+//   下面的用例各自用 mock 的 effect 清理来模拟 cordis 行为，不依赖执行顺序。
 
 test('10a effect 回调返回的是函数，不是数组', () => {
   soulHost.__resetRoutesForTest()
