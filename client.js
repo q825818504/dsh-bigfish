@@ -2730,11 +2730,7 @@ window.__ModuleLoader__.load({
               h('div', { 'data-fm-grow': '', style: { fontWeight: 600, fontSize: '13px' } },
                 标题 + (模式 === 'workspace'
                   ? (sl.工作区 ? ' · ' + 工作区显示(sl.工作区) : ' · 还没选工作区')
-                  : (sl.sessions.length ? ' · ' + sl.sessions.length + ' 个会话' : ' · 还没绑会话'))),
-              h('button', {
-                'data-fm-btn': '', style: { padding: '2px 8px', fontSize: '12px' },
-                onClick: () => patch({ slots: 份列表.filter((_, j) => j !== i) }, '删掉这一份'),
-              }, '删掉')),
+                  : (sl.sessions.length ? ' · ' + sl.sessions.length + ' 个会话' : ' · 还没绑会话')))),
             h('div', { 'data-fm-row': '' },
               h('div', { 'data-fm-grow': '' },
                 h('div', { 'data-fm-label': '', style: { fontSize: '12px' } },
@@ -2749,13 +2745,11 @@ window.__ModuleLoader__.load({
               })),
             模式 === 'workspace' ? 工作区块 : 会话块))
         })
-        项.push(份列表.length < 6
-          ? h('div', { key: 'add', 'data-fm-row': '' },
-            h('button', {
-              'data-fm-btn': '',
-              onClick: () => patch({ slots: [...份列表, { id: '', label: '', selfName: '', ownerName: '', 工作区: '', sessions: [] }] }, '再加一份心情'),
-            }, '+ 再加一份心情'))
-          : h('div', { key: 'max', 'data-fm-note': '' }, '最多 6 份。'))
+        // ⭐ 2026-10-31：不再提供「再加一份」。
+        //    记忆与心情必须一一对应（每段记忆对应一段当时的心情），多份会让星图
+        //    「这段记忆按哪份心情着色」产生歧义。数据层也只取第一份，历史多份不读。
+        项.push(h('div', { key: 'single', 'data-fm-note': '' },
+          '只有一份心情 —— 它和记忆共用同一个范围。'))
         项.push(h('div', { key: 'tip', 'data-fm-note': '' },
           模式 === 'workspace'
             ? '工作区下拉里，能反查到路径的显示路径，查不到的显示目录名 —— 两种都能选。'

@@ -1,4 +1,4 @@
-﻿import test from 'node:test'
+import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -8,7 +8,7 @@ import { Readable } from 'node:stream'
 // Only synthetic state; the production module captures this path at import time.
 const home = mkdtempSync(join(tmpdir(), 'bigfish-stale-'))
 process.env.DSH_HOME = home
-const { apply, __测试: helpers } = await import('../lib/mood/index.js')
+const { apply, __测试: helpers, 规整份数 } = await import('../lib/mood/index.js')
 
 // 路由前缀跟随插件（上游是 /dsh-feiyu-mood，本仓库是 /dsh-bigfish-mood）
 const P = '/dsh-bigfish-mood'
@@ -203,18 +203,14 @@ test('two agents sharing a key apply serially to the latest shared state', async
   h.unload()
 })
 
-test('resetting one key preserves another agent pending judgment', async () => {
-  const h = harness([slot('a', ['session-one']), slot('b', ['session-two'])])
-  const second = h.addAgent('session-two'); h.tick()
-  h.turn(); await flush(); second.turn()
-  await h.request(P + '/reset?key=a')
-  await h.settle(0)
-  assert.equal(h.store().moods.a.timeline.length, 0)
-  assert.equal(h.calls.length, 2, 'unrelated key must still invoke the model')
-  await h.settle(1)
-  assert.equal(h.store().moods.a.mood, 70)
-  assert.equal(h.store().moods.a.timeline.length, 0)
-  assert.equal(h.store().moods.b.mood, 73)
-  assert.equal(h.store().moods.b.timeline.length, 1)
-  h.unload()
+test('only the first slot is used; extra slots are dropped', () => {
+  // 记忆与心情必须一一对应：多份会让「这段记忆按哪份心情着色」产生歧义。
+  // 数据层从源头截断到 1 —— 这里直接测规整函数，不绕运行时。
+  const got = 规整份数(
+    [slot('a', ['session-one']), slot('b', ['session-two']), slot('c', ['session-three'])],
+    '',
+    null,
+  )
+  assert.equal(got.length, 1, '多份配置应被截断到 1')
+  assert.equal(got[0].id, 'a', '保留的是第一份')
 })
