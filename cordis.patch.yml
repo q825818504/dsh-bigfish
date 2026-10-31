@@ -1,0 +1,30 @@
+# dsh-bigfish 的挂载配置
+#
+# 合并前：
+#   dsh-dafeiyu-memory  → insert: id: dafeiyu-memory / name: dsh-dafeiyu-memory
+#   dsh-bigfish-mood    → insert: id: bigfish-mood   / name: dsh-bigfish-mood
+#
+# 合并后只保留一条。inject 是两个子模块的并集（记忆 8 个 + 心情独有 3 个）。
+- insert:
+    - id: bigfish
+      name: dsh-bigfish
+      inject:
+        # —— 记忆模块需要 ——
+        - sessions
+        - sessionQuery
+        - agents
+        - systemPrompt
+        - tools
+        - connection
+        - workspaceRegistry
+        - settings
+        # —— 心情模块独有 ——
+        - webServer
+        - llm
+        - timer
+      config:
+        bank: dafeiyu
+        bindingMode: workspace
+        recallChars: 2400
+        toolChars: 6000
+        maintenanceMinutes: 30

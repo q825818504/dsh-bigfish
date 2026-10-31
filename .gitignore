@@ -1,0 +1,24 @@
+# 依赖
+node_modules/
+
+# 规划与交接记录（不进仓库，留在本地）
+.planning/
+
+# 从两个原仓库带过来的历史文档，只作本地参考
+docs-*.md
+
+# 本地数据与产物
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.tgz
+*.log
+
+# 工具缓存
+.impeccable/
+.cache/
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini

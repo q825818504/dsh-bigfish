@@ -1,0 +1,89 @@
+{
+  "name": "dsh-bigfish",
+  "version": "1.0.0",
+  "description": "大肥鱼：一个记得住、有情绪的 AI 伙伴。记忆与心情合为一体，侧边栏单一入口、分板块展示。",
+  "license": "MIT",
+  "author": "Alime",
+  "contributors": [
+    "Yuuyuko-uu (upstream dsh-feiyu-mood, https://github.com/Yuuyuko-uu)"
+  ],
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib/memory/index.js",
+    "lib/memory/store.js",
+    "lib/memory/adapter.js",
+    "lib/memory/mood-bridge.js",
+    "lib/memory/cli.js",
+    "lib/mood/index.js",
+    "lib/mood/selfupdate.mjs",
+    "assets",
+    "locale",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins",
+        "@deepseek-ai/dsh-client-ui-directory-picker-native",
+        "@deepseek-ai/dsh-client-ui-directory-picker-browse"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22.16.0",
+    "dsh": "0.2.1-rc.2 || 0.2.1-rc.3"
+  },
+  "scripts": {
+    "test": "node ./test/memory-contract.test.js",
+    "test:memory": "node ./test/memory-contract.test.js",
+    "test:scope": "node ./test/scope-backup.test.js",
+    "test:bridge": "node ./test/mood-bridge.test.js",
+    "test:mood": "node ./test/bigfish-v1.test.mjs",
+    "test:decay": "node ./test/decay.test.mjs",
+    "test:stale": "node ./test/stale-judgments.test.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/dsh-agent": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-ptc-runtime": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-scope": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-user-approval": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-sandbox": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-working-directory": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-client-connection": "0.2.1-rc.2 || 0.2.1-rc.3",
+    "@deepseek-ai/dsh-host-webserver": "0.2.1-rc.2 || 0.2.1-rc.3"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "~3.18.5"
+  }
+}

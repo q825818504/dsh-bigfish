@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Big Fish Memory",
+    "description": "Manage session/workspace memory scope, choose a SQLite folder, and inspect storage statistics."
+  }
+}
