@@ -10,6 +10,45 @@
 
 ---
 
+## 2.1.1 — 2026-10-31
+
+**真的修好了：包根路径少算一级（2.1.0 改了文档，代码没改到位）**
+
+### 根因
+
+`lib/mood/index.js` 里原本是：
+
+```js
+const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+```
+
+这个文件位于 `<包>/lib/mood/index.js`，`dirname` 是 `<包>/lib/mood`，往上**一级**
+只到 `<包>/lib`。而 `assets/` 在 `<包>/assets`，所以全部落空：
+
+| 用途 | 实际读取的路径 | 结果 |
+|---|---|---|
+| 五档表情 `face-*.png` | `<包>/lib/assets/face-ok.png` | 404 |
+| 形象图 `feiyu.png` | `<包>/lib/assets/feiyu.png` | 404 |
+| 挂饰脚本 `widget.js` | `<包>/lib/assets/widget.js` | 404 |
+| 版本自查 `package.json` | `<包>/lib/package.json` | 读不到 |
+
+2.1.0 把图片从 `assets/faces/` 移回 `assets/` 是对的，但包根这一级没改，
+所以症状一点没变 —— 面板上五张表情依旧是裂图，右下角依旧没有挂饰。
+
+### 修
+
+- `PACKAGE_ROOT` 改为往上**两级**，正确指向 `<包>`。
+- `package.json` 补上 `repository` / `homepage` / `bugs`，「检查更新」才有仓库可查
+  （之前一直显示「包里没写 GitHub 仓库地址，没法查」）。
+- `package-lock.json` 版本同步到 2.1.1，测试才认。
+
+### 一处说明
+
+`档名` 那段是从包根往上两级取 `profiles/<档名>`。`link:` 安装时包根在
+`D:\大脑\dsh-bigfish`，取不到档名，会退回 `desktop` —— 这是预期兜底，不影响功能。
+
+---
+
 ## 2.1.0 — 2026-10-31
 
 **修挂饰破图 + 数据根目录可自定义**

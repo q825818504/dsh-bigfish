@@ -1,9 +1,17 @@
 {
   "name": "dsh-bigfish",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "大肥鱼：一个记得住、有情绪的 AI 伙伴。记忆与心情合为一体，侧边栏单一入口、分板块展示。",
   "license": "MIT",
   "author": "Alime",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/q825818504/dsh-bigfish.git"
+  },
+  "homepage": "https://github.com/q825818504/dsh-bigfish",
+  "bugs": {
+    "url": "https://github.com/q825818504/dsh-bigfish/issues"
+  },
   "contributors": [
     "Yuuyuko-uu (upstream dsh-feiyu-mood, https://github.com/Yuuyuko-uu)"
   ],
