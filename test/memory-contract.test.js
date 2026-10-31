@@ -793,6 +793,13 @@ test('D10 a throwing workspace registry degrades to an empty scope', () => {
 // 完整插件 fixture：走真正的 apply()，用于验证热切换与配置往返。
 // 通过 browse/settings 两个 RPC 观察状态，不直接暴露内部 store 实例。
 function pluginFixture(initialConfig, sessions, workspaces) {
+  /* ⚠ 2.3.2 自检：apply() 会读 <DSH_HOME>/bigfish/root.json 决定数据根。
+     不隔离的话测试会读到真实机器上的配置（甚至写进去）。
+     整个文件共用一个临时家目录，每条用例开始前清掉上一次留下的 root.json。 */
+  if (!process.env.DSH_HOME || !process.env.DSH_HOME.includes('dafeiyu-mc-home-')) {
+    process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'dafeiyu-mc-home-'))
+  }
+  try { rmSync(join(process.env.DSH_HOME, 'bigfish', 'root.json'), { force: true }); } catch { /* 没有就算了 */ }
   const routes = new Map();
   const disposers = [];
   const config = { ...initialConfig };
@@ -862,10 +869,8 @@ function pluginFixture(initialConfig, sessions, workspaces) {
 }
 
 // ── S12：切换绑定范围必须立即换库，不必等重载 ────────────────────────────
-// ⚠️ 2026-10-31 暂时跳过：库路径改成「每范围一个目录」后，这两个集成用例还写着旧文件名。
-//    功能本身有 S1/S2/S3/S4 的单元覆盖（范围解析、稳定命名、拒绝未定范围）。
-//    待修：把断言里的旧文件名换成新的 <范围目录>/memory-<短标识>.sqlite3。
-test.skip('S12 switching workspace target swaps the live database in one save', async t => {
+// 2.3.2：库路径已改成 <范围目录>/memory-<短标识>.sqlite3，断言同步更新。
+test('S12 switching workspace target swaps the live database in one save', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'dafeiyu-hotswap-'));
   const sessions = [scopeSession('session-a'), scopeSession('session-b')];
   const workspaces = [
@@ -892,7 +897,12 @@ test.skip('S12 switching workspace target swaps the live database in one save', 
   const switched = response.result.value.scopeSwitch;
   assert.ok(switched, 'the response must report the scope switch');
   assert.equal(switched.switched, true, 'the live store must be swapped in this same call');
-  assert.ok(response.result.value.databasePath.includes('workspace-'), 'must report the new library');
+  // 2.3.2：库路径已改成 <范围目录>/memory-<短标识>.sqlite3，不再含 'workspace-' 字样
+  assert.ok(
+    /[\\/]ws-((ws-)?1|ws-2)[\\/]memory-ws-/.test(response.result.value.databasePath)
+      || response.result.value.databasePath.includes('memory-ws-'),
+    'must report the new library: ' + response.result.value.databasePath,
+  );
 
   // 新库独立：看不到 ws-1 的内容
   const afterSwitch = await fixture.browse({ action: 'page', limit: 10 });
@@ -907,7 +917,7 @@ test.skip('S12 switching workspace target swaps the live database in one save', 
 });
 
 // ── S13：inspect-scope 报告已有记忆，供切换前提示 ────────────────────────
-test.skip('S13 inspect-scope reports an existing library for a target workspace', async t => {
+test('S13 inspect-scope reports an existing library for a target workspace', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'dafeiyu-inspect-'));
   const sessions = [scopeSession('session-a')];
   const workspaces = [{ id: 'ws-1', title: 'One', sessionIds: ['session-a'] }];
@@ -922,5 +932,8 @@ test.skip('S13 inspect-scope reports an existing library for a target workspace'
   assert.equal(response.result.ok, true, response.result.error?.message);
   assert.equal(response.result.value.exists, true);
   assert.equal(response.result.value.messages, 1);
-  assert.ok(response.result.value.path.includes('workspace-'));
+  assert.ok(
+    response.result.value.path.includes('memory-ws-'),
+    'must point at the per-scope library: ' + response.result.value.path,
+  );
 });

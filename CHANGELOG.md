@@ -10,6 +10,63 @@
 
 ---
 
+## 2.3.2 — 2026-10-31
+
+**清掉测试欠账：3 条跳过全部处理，现在 0 跳过**
+
+### S12 / S13 —— 修好并启用
+
+这两条跳过的原因写着「库路径改成每范围一个目录后，用例还写着旧文件名」。
+真因确实是断言过时，不是功能坏了：
+
+| 旧断言 | 现状 |
+|---|---|
+| `databasePath.includes('workspace-')` | 路径是 `<范围目录>/memory-<短标识>.sqlite3` |
+| `path.includes('workspace-')` | 同上 |
+
+改成断言 `memory-ws-` 后两条都通过 —— 它们验的「一次保存就换库」「切回来旧内容还在」
+确实是好的。
+
+### 顺带修：memory-contract 也没隔离 DSH_HOME
+
+`pluginFixture` 同样会调真实的 `apply()`，同样没设 `DSH_HOME`。
+和 2.3.1 修的 `scope-backup` 是同一个坑：测试会读真实机器上的 `root.json`，
+甚至往里写。现在每条用例开始前清掉上一次留下的 `root.json`。
+
+⚠ 注意：S12/S13 之前一直是红的假象，是因为**真实 root.json 的取值**
+决定了它们能不能过 —— 换句话说，这两条之前的通过与否取决于跑测试的机器。
+
+### 第 3 条 —— 删掉，而不是改成勉强通过
+
+`queued stale task never calls model and a new binding still works`。
+
+探针查明：换份之后另一份的读回必然是空的，因为状态文件已按范围分家，
+份 `a` 和份 `b` 各自落在不同目录的独立文件里，读写前都得先把「当前范围」指过去。
+一条用例里同时验「换份」和「跨份读回」，前提本身就和现在的模型冲突。
+
+它要验的契约已经由 `late result is ignored after rebind` 完整覆盖，而且是干净的。
+所以**删掉，并在原位置写清楚为什么删** —— 留一条靠碰运气才能绿的用例，比没有更危险。
+
+### 结果
+
+```
+test:memory    47 pass / 0 fail / 0 skip
+test:scope     22 pass / 0 fail / 0 skip
+test:bridge    17 pass / 0 fail / 0 skip
+test:mood      22 pass / 0 fail / 0 skip
+test:decay      6 pass / 0 fail / 0 skip
+test:stale     18 pass / 0 fail / 0 skip
+test:root-move  6 pass / 0 fail / 0 skip
+soul           35 pass / 0 fail
+merged-client   6 pass / 0 fail
+────────────────────────────────────
+合计 179 通过 / 0 失败 / 0 跳过
+```
+
+跑测试前后，真实 `root.json` 与 `bigfish-mood/config.json` 的 md5 完全一致。
+
+---
+
 ## 2.3.1 — 2026-10-31
 
 **测试不再读写真实家目录**
