@@ -40,7 +40,7 @@ window.__ModuleLoader__.load({
         navLabel: '大肥鱼记忆管理',
         title: '大肥鱼记忆管理',
         intro: '查看本地记忆库的实际文件占用与两种记忆分布。',
-        settingsTitle: '记忆范围与保存位置',
+        settingsTitle: '记忆存储位置',
         bindingLabel: '绑定范围',
         bindingSession: '按会话',
         bindingWorkspace: '按工作区',
@@ -188,7 +188,7 @@ window.__ModuleLoader__.load({
         navLabel: 'Big Fish Memory',
         title: 'Big Fish Memory',
         intro: 'Inspect local database files and two views of the saved memory.',
-        settingsTitle: 'Memory scope and location',
+        settingsTitle: 'Memory storage location',
         bindingLabel: 'Binding scope',
         bindingSession: 'By session',
         bindingWorkspace: 'By workspace',
@@ -1942,20 +1942,9 @@ window.__ModuleLoader__.load({
         return h('section', { className: 'dfm-settings', 'aria-labelledby': 'dfm-settings-title' },
           h('h2', { id: 'dfm-settings-title', className: 'dfm-settings-title' }, t('settingsTitle')),
           h('div', { className: 'dfm-settings-grid' },
-            h('div', { className: 'dfm-setting' },
-              h('span', { className: 'dfm-setting-label' }, t('bindingLabel')),
-              h('div', { className: 'dfm-choice-row', role: 'group', 'aria-label': t('bindingLabel') },
-                h('button', {
-                  type: 'button', className: 'dfm-choice', 'aria-pressed': currentMode === 'session',
-                  disabled: busy || scopeDirty || Boolean(pendingTarget),
-                  onClick: () => { setError(''); setNotice(''); setPendingDirectory(''); setPendingMode(currentMode === 'session' ? '' : 'session'); },
-                }, t('bindingSession')),
-                h('button', {
-                  type: 'button', className: 'dfm-choice', 'aria-pressed': currentMode === 'workspace',
-                  disabled: busy || scopeDirty || Boolean(pendingTarget),
-                  onClick: () => { setError(''); setNotice(''); setPendingDirectory(''); setPendingMode(currentMode === 'workspace' ? '' : 'workspace'); },
-                }, t('bindingWorkspace'))),
-              h('p', { className: 'dfm-setting-hint' }, t(currentMode === 'workspace' ? 'bindingWorkspaceHint' : 'bindingSessionHint'))),
+            /* ⭐ 2026-10-31：绑定范围搬去「设置」板块了 —— 那边写 scope.json，
+               是记忆和心情共用的唯一真源。这里再放一个会跟它打架，所以删掉。
+               本区只留「库放在哪」和「严格范围」。 */
             h('div', { className: 'dfm-setting' },
               h('span', { className: 'dfm-setting-label' }, t('databaseLabel')),
               h('code', { className: 'dfm-path' }, settings.databasePath || '—'),
@@ -1965,7 +1954,6 @@ window.__ModuleLoader__.load({
                   disabled: busy || scopeDirty || !canChooseDirectory,
                 }, t('chooseDirectory')),
                 !canChooseDirectory ? h('span', { className: 'dfm-setting-hint' }, t('settingsUnavailable')) : null))),
-          sessionControls,
           h('div', { className: 'dfm-setting dfm-setting--strict' },
             h('span', { className: 'dfm-setting-label' }, t('strictScopeLabel')),
             h('p', { className: 'dfm-setting-hint' }, t('strictScopeHint')),
@@ -1989,14 +1977,6 @@ window.__ModuleLoader__.load({
                 type: 'button', className: 'dfm-action dfm-action--quiet', disabled: busy,
                 onClick: () => runAction({ action: 'split-bank', sourceDatabase: settings.databasePath }),
               }, t('strictScopeSplit')))),
-          pendingMode ? h('div', { className: 'dfm-confirm' },
-            h('p', null, t('modeConfirmBody')),
-            h('div', { className: 'dfm-setting-actions' },
-              h('button', { type: 'button', className: 'dfm-action dfm-action--quiet', disabled: busy, onClick: () => setPendingMode('') }, t('cancel')),
-              h('button', {
-                type: 'button', className: 'dfm-action', disabled: busy, 'aria-busy': busy,
-                onClick: () => runAction({ action: 'set-binding-mode', bindingMode: pendingMode }),
-              }, busy ? t('savingSettings') : t('confirmChange')))) : null,
           browseOpen && browse ? h('div', { className: 'dfm-confirm' },
             h('p', null, t('browseTitle')),
             h('p', { className: 'dfm-setting-hint' }, t('browseHint')),
@@ -2301,7 +2281,8 @@ window.__ModuleLoader__.load({
     // 四个页签（默认第一个）
     const 页签 = [
       ['mood', '心情'],
-      ['bind', '会话绑定'],
+      // ⭐ 2026-10-31：绑定搬去「设置」板块了（那里是范围的唯一真源），
+      //    这里不再重复放一个会跟它打架的入口。
       ['judge', '判断与注入'],
       ['charm', '挂饰'],
     ]
