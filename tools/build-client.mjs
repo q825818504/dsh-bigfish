@@ -52,6 +52,7 @@ function extractFactoryBody(relPath) {
 
 const memoryBody = extractFactoryBody('lib/memory/client.js')
 const moodBody = extractFactoryBody('lib/mood/client.js')
+const settingsSrc = readFileSync(join(root, 'lib/shell/settings.js'), 'utf8')
 
 const out = `/**
  * dsh-bigfish —— 合并后的客户端入口（构建产物，请勿手改）
@@ -96,10 +97,17 @@ ${moodBody}
 
     let MemoryPanel = null
     let MoodPanel = null
+    let SettingsPanel = null
+
+    /* ── 设置面板：源文件 lib/shell/settings.js，构建时内联 ──
+       它定义一个 创建设置面板(React, h, 依赖) 工厂，依赖在 apply 里注入
+       （需要 ctx.connection 才能调记忆的 rpc）。 */
+${settingsSrc}
 
     const TABS = [
       { key: 'memory', label: '记忆' },
       { key: 'mood', label: '心情' },
+      { key: 'settings', label: '设置' },
     ]
 
     const SHELL_CSS = \`
@@ -126,7 +134,7 @@ ${moodBody}
 
     function Shell() {
       const [tab, setTab] = React.useState('memory')
-      const Active = tab === 'memory' ? MemoryPanel : MoodPanel
+      const Active = tab === 'memory' ? MemoryPanel : tab === 'mood' ? MoodPanel : SettingsPanel
       return h('div', { className: 'bf-shell' },
         h('div', { className: 'bf-tabs', role: 'tablist', 'aria-label': '大肥鱼板块' },
           TABS.map((t) => h('button', {
@@ -177,6 +185,17 @@ ${moodBody}
         moodModule.apply(ctx, { embedded: true })
         MemoryPanel = memoryModule.getPanel()
         MoodPanel = moodModule.getPanel()
+
+        // 设置面板：记忆走 connection rpc，心情走 HTTP（两套都是现成的）
+        SettingsPanel = 创建设置面板(React, h, {
+          rpcCall: (channel, endpoint, payload) => ctx.connection.rpc.call(channel, endpoint, payload),
+          fetchJson: (url) => fetch(url, { headers: { accept: 'application/json' } }).then((r) => r.json()),
+          postJson: (url, body) => fetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify(body),
+          }).then((r) => r.json()),
+        })
 
         slots.inject('sidebar.panellist', () => slots.register({
           name: 'sidebar.panellist',

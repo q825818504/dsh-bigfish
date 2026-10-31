@@ -205,6 +205,20 @@ test('inject 覆盖两个子面板用到的全部服务', () => {
  * 反向验证：如果 inject 真的少了 locale，apply 必须抛错。
  * 这条不是测产品行为，是证明上面那个断言确实能拦住事故。
  */
+test('主面板有记忆 / 心情 / 设置三个板块', () => {
+  const { client } = loadClient()
+  const { ctx, registered } = makeCtx(client.inject)
+  client.apply(ctx)
+
+  const Shell = registered.find((r) => r.name === 'main').comp
+  const tree = Shell()
+
+  // mock 的 createElement 产出普通对象，直接序列化找三个标签最稳
+  const 全树 = JSON.stringify(tree)
+  for (const label of ['记忆', '心情', '设置']) {
+    assert.ok(全树.includes('"' + label + '"'), '板块缺少：' + label)
+  }
+})
 test('inject 缺少 locale 时 apply 会抛错（证明约束有效）', () => {
   const { client } = loadClient()
   const broken = client.inject.filter((s) => s !== 'locale')
