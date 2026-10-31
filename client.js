@@ -2758,22 +2758,9 @@ window.__ModuleLoader__.load({
       /* ── 页签 3：判断与注入（称呼 / 模型 / 开关 / 数值） ── */
       const 判断页 = (() => {
         const 项 = []
-        项.push(h('div', { key: 'names', 'data-fm-sec': '' },
-          h('div', { 'data-fm-h': '' }, '称呼'),
-          /* ⭐ 2.4.0：名字和称呼搬去「灵魂」板块了 —— 那里是唯一真源。
-             这里以前也存一份，改一处另一边不生效，还容易不一致。 */
-          h('div', { 'data-fm-note': '' },
-            '她的名字和怎么称呼你，现在都在「灵魂」里设置 —— 那里改了，心情判断会跟着用新的。'),
-          h('div', { 'data-fm-row': '' },
-            h('div', { 'data-fm-grow': '' },
-              h('div', { 'data-fm-label': '' }, 'TA 平时怎么叫你（昵称）'),
-              h('div', { 'data-fm-note': '' }, '逗号分隔，写成 TA 平时怎么喊你，比如：小鱼,宝贝,亲爱的。判断时会把这些词当成「在叫你」，不会把「宝宝视频」当成一个东西')),
-            h('input', {
-              'data-fm-input': '', value: cfg.selfAliases || '',
-              placeholder: '小鱼,宝贝,亲爱的',
-              onChange: (e) => setCfg((c) => ({ ...c, selfAliases: e.target.value })),
-              onBlur: () => patch({ selfAliases: cfg.selfAliases }, '昵称'),
-            }))))
+        /* ⭐ 2.4.1：整块「称呼」删掉了。
+           她的名字、怎么称呼你、你平时怎么叫她 —— 全部归「灵魂」板块管，
+           这里一个输入框都不留。以前这里也存一份，改一处另一边不生效。 */
         项.push(h('div', { key: 'model', 'data-fm-sec': '' },
           h('div', { 'data-fm-h': '' }, '判断用哪个模型'),
           h('div', { 'data-fm-note': '' }, '心情判断是一次很短的小调用。想更准就指到更强的模型，想省钱就指到便宜的；留空 = 跟着当前会话的模型走。'),
@@ -3197,6 +3184,18 @@ window.__ModuleLoader__.load({
                 onChange: (e) => patch((d) => { d.identity.address = e.target.value }),
               }),
             ),
+          ),
+          /* ⭐ 2.4.1：昵称从心情搬过来了 —— 它本来就是「她是谁」的一部分 */
+          h('div', { className: 'bfs-field' },
+            h('label', { className: 'bfs-label' }, '你平时怎么叫她（昵称，逗号分隔）'),
+            h('div', { className: 'bfs-sec-note', style: { marginBottom: '6px' } },
+              '比如：小鱼,宝贝,胖鱼。判断和回忆时，这些词会被当成「在叫她」，不会把「宝宝视频」当成一个东西的名字。'),
+            h('input', {
+              className: 'bfs-input',
+              value: (draft.identity && draft.identity.aliases) || '',
+              placeholder: '小鱼,宝贝,胖鱼',
+              onChange: (e) => patch((d) => { d.identity.aliases = e.target.value }),
+            }),
           ),
           h('div', { className: 'bfs-field' },
             h('label', { className: 'bfs-label' }, '她是怎样一个人'),
