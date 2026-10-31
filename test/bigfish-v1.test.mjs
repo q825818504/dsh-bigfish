@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 本轮改造的回归测试（dsh-bigfish-mood 1.0.0）
  *
  * 覆盖四件事：
@@ -128,9 +128,14 @@ test('an explicit config keeps its own mode instead of the default', () => {
 })
 
 // ── 3. 存储目录 ──────────────────────────────────────────────────────────────
-test('state is stored under <DSH_HOME>/bigfish-mood, not feiyu-mood', () => {
-  assert.equal(helpers.库路径(), join(home, 'bigfish-mood', 'state.json'))
-  assert.equal(helpers.存储目录(), join(home, 'bigfish-mood'))
+test('state lives in its own scope directory, not a shared state.json', () => {
+  // ⭐ 2026-10-31：改成「每个范围一个文件」。路径形如
+  //    <DSH_HOME>/bigfish/scopes/<ws-xxx>/mood-<短标识>.json
+  const p = helpers.库路径()
+  assert.ok(p, '范围确定后应有具体路径')
+  assert.ok(p.includes(join('bigfish', 'scopes')), '应落在 scopes 根目录下：' + p)
+  assert.match(p, /mood-[A-Za-z0-9_-]+\.json$/, '文件名要带范围特征：' + p)
+  assert.ok(!p.endsWith(join('bigfish-mood', 'state.json')), '不再共用一份 state.json')
   assert.ok(!existsSync(join(home, 'feiyu-mood')), '不该创建 feiyu-mood 目录')
 })
 
@@ -246,9 +251,11 @@ test('workspace mode judges a real turn and writes a timeline entry', async () =
   const sid = 'session-one'
   // 造出 DSH 的会话目录形状：<DSH_HOME>/sessions/<工作区>/<会话>/
   mkdirSync(join(home, 'sessions', WS, sid), { recursive: true })
-  // 让 config.json 回到默认（工作区模式 + 默认工作区），并清掉前面用例留下的状态
+  // 让 config.json 回到默认（工作区模式 + 默认工作区），并清掉前面用例留下的状态。
+  // ⭐ 2026-10-31：状态已改成「每范围一个文件」，落在 <DSH_HOME>/bigfish/scopes/<范围>/ 下，
+  //    所以要清的是整个 bigfish 数据根，删 state.json 已经没用了。
   rmSync(join(home, 'bigfish-mood', 'config.json'), { force: true })
-  rmSync(join(home, 'bigfish-mood', 'state.json'), { force: true })
+  rmSync(join(home, 'bigfish'), { recursive: true, force: true })
 
   helpers.复位挂载()
   const routes = new Map()
