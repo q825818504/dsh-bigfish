@@ -10,6 +10,27 @@
 
 ---
 
+## 2.3.1 — 2026-10-31
+
+**测试不再读写真实家目录**
+
+自检时抓到一个真问题：`createHostFixture` 会调真实的 `apply()`，而 2.3.0 的 `apply`
+现在会读 `<DSH_HOME>/bigfish/root.json` 决定数据根。没设 `DSH_HOME` 的用例因此会：
+
+1. 读到真实机器上的 `root.json`，结果取决于用户环境
+2. 没有 `root.json` 时，把 profile 的 `scopeDirectory` 落成**真实的** `root.json`
+
+表现是「本机跑绿、换台机器跑红」，自检时连红了 3 条。
+更糟的是测试会真的往用户的 DSH 家目录写文件。
+
+**修**：`createHostFixture` 每次换一个临时 `DSH_HOME`，`close()` 时清掉并归还。
+需要自己断言 `root.json` 位置的用例传 `keepDshHome: true` 保留自己的家目录。
+
+**验证**：连跑两轮 177 通过 / 0 失败；跑测试前后
+`<DSH_HOME>/bigfish/root.json` 与 `bigfish-mood/config.json` 的 md5 完全一致。
+
+---
+
 ## 2.3.0 — 2026-10-31
 
 **全量审计后的修复 + 新增「灵魂」板块**
