@@ -197,6 +197,12 @@ ${settingsSrc}
           }).then((r) => r.json()),
         })
 
+        // 启动 1.5 秒后后台预取设置数据 —— 用户点「设置」时通常已有缓存，
+        // 不会先看到一片「读取中」。
+        try {
+          setTimeout(() => { try { SettingsPanel.预取() } catch (e) { /* 预取失败不影响打开 */ } }, 1500)
+        } catch (e) { /* 环境没有 setTimeout 就算了 */ }
+
         slots.inject('sidebar.panellist', () => slots.register({
           name: 'sidebar.panellist',
           id: PANEL_ID,
