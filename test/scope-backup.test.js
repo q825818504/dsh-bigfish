@@ -602,3 +602,93 @@ test('data root can be pointed anywhere and lives outside scope.json', async t =
   response = await invokeSettings(fixture, { action: 'read-data-root' });
   assert.equal(response.result.value.dataRoot, '');
 });
+
+// ⭐ 方案 B：保存目录时顺便把现有数据复制过去
+//   · 只复制不删除，旧目录原地保留
+//   · 目标非空必须拒绝，且 root.json 不动（用户还在旧目录里好好工作）
+test('write-data-root with copyData moves the data and keeps the old folder', async t => {
+  const directory = temporaryDirectory();
+  const home = temporaryDirectory();
+  const previousHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+
+  // 造一个像真的旧根
+  const 旧根 = join(directory, '旧数据');
+  mkdirSync(join(旧根, 'ws-abc'), { recursive: true });
+  writeFileSync(join(旧根, 'scope.json'), JSON.stringify({ version: 1, mode: 'workspace', workspaceId: 'abc' }), 'utf8');
+  const 库 = new MemoryStore(join(旧根, 'ws-abc', 'memory-ws-abc.sqlite3'));
+  库.capture({ session: 's@1000', eventKey: '1', role: 'user', content: '这条要跟着搬家', sourceTime: 1000 });
+  库.close();
+
+  const fixture = createHostFixture({ database: join(旧根, 'ws-abc', 'memory-ws-abc.sqlite3'), strictScope: true, scopeDirectory: 旧根 }, {});
+  t.after(async () => {
+    await fixture.close();
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previousHome;
+  });
+
+  const 新根 = join(directory, '新数据');
+
+  // 先预演：应当报告能复制
+  let response = await invokeSettings(fixture, { action: 'inspect-data-root-move', dataRoot: 新根 });
+  assert.equal(response.result.ok, true);
+  assert.ok(response.result.value.files >= 2, '至少要复制 scope.json 和库');
+  assert.equal(existsSync(新根), false, '预演不能创建目标目录');
+
+  // 真复制
+  response = await invokeSettings(fixture, { action: 'write-data-root', dataRoot: 新根, copyData: true });
+  assert.equal(response.result.ok, true, JSON.stringify(response.result));
+  assert.ok(response.result.value.copy && response.result.value.copy.ok);
+  assert.equal(JSON.parse(readFileSync(join(home, 'bigfish', 'root.json'), 'utf8')).dataRoot, 新根);
+
+  // 新目录里东西齐全且能用
+  assert.equal(existsSync(join(新根, 'scope.json')), true);
+  const 副本 = new MemoryStore(join(新根, 'ws-abc', 'memory-ws-abc.sqlite3'));
+  assert.equal(副本.stats().messages, 1);
+  assert.equal(副本.integrityCheck().ok, true);
+  副本.close();
+
+  // 旧目录一个文件都没少
+  assert.equal(existsSync(join(旧根, 'scope.json')), true);
+  assert.equal(existsSync(join(旧根, 'ws-abc', 'memory-ws-abc.sqlite3')), true);
+
+  // 目标非空 → 拒绝，且 root.json 保持新根不变
+  const 占位 = join(directory, '有东西');
+  mkdirSync(占位, { recursive: true });
+  writeFileSync(join(占位, 'existing.txt'), 'keep me', 'utf8');
+  response = await invokeSettings(fixture, { action: 'write-data-root', dataRoot: 占位, copyData: true });
+  const 失败体 = response.result.value;
+  assert.equal(失败体.ok, false);
+  assert.equal(失败体.code, 'target-not-empty');
+  assert.equal(readFileSync(join(占位, 'existing.txt'), 'utf8'), 'keep me');
+  assert.equal(JSON.parse(readFileSync(join(home, 'bigfish', 'root.json'), 'utf8')).dataRoot, 新根, '失败的复制不能改动配置');
+});
+
+test('write-data-root without copyData only changes the path', async t => {
+  const directory = temporaryDirectory();
+  const home = temporaryDirectory();
+  const previousHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+
+  const 旧根 = join(directory, '旧数据');
+  mkdirSync(旧根, { recursive: true });
+  writeFileSync(join(旧根, 'scope.json'), '{"version":1,"mode":"workspace","workspaceId":"abc"}', 'utf8');
+
+  const fixture = createHostFixture({ database: join(旧根, 'memory.sqlite3'), strictScope: true, scopeDirectory: 旧根 }, {});
+  t.after(async () => {
+    await fixture.close();
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previousHome;
+  });
+
+  const 新根 = join(directory, '只改路径');
+  const response = await invokeSettings(fixture, { action: 'write-data-root', dataRoot: 新根 });
+  assert.equal(response.result.ok, true);
+  assert.equal(response.result.value.copy, null, '没勾选就不复制');
+  assert.equal(existsSync(新根), false, '没勾选时一个新目录都不该出现');
+  assert.equal(JSON.parse(readFileSync(join(home, 'bigfish', 'root.json'), 'utf8')).dataRoot, 新根);
+});

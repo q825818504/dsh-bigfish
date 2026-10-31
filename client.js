@@ -3072,6 +3072,8 @@ function 创建设置面板(React, h, 依赖) {
     }
     .bf-chip[aria-pressed="true"] { background: rgba(127,127,127,.2); font-weight: 600; }
     .bf-note { font-size: 12px; opacity: .6; line-height: 1.6; }
+    .bf-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+    .bf-check input { margin: 0; cursor: pointer; }
     .bf-warn { font-size: 12px; color: #d9534f; line-height: 1.6; }
     .bf-ok { font-size: 12px; color: #3c9a5f; }
     .bf-path {
@@ -3105,6 +3107,9 @@ function 创建设置面板(React, h, 依赖) {
     const [根保存中, set根保存中] = React.useState(false)
     const [根提示, set根提示] = React.useState('')
     const [根错误, set根错误] = React.useState('')
+    // ⭐ 方案 B：保存目录时顺便把现有数据复制过去（只复制不删除，目标必须是空目录）
+    const [复制数据, set复制数据] = React.useState(true)
+    const [预演, set预演] = React.useState(null)
 
     const 读全部 = React.useCallback(async () => {
       if (!缓存) set载入中(true)
@@ -3177,9 +3182,27 @@ function 创建设置面板(React, h, 依赖) {
       }
     }
 
+    /* ⭐ 预演：输入框变了就去问一下「要复制几个文件、会不会撞车」。
+       输入停下来 400ms 才发，避免边打字边打请求。 */
+    React.useEffect(() => {
+      const v = String(数据根 || '').trim()
+      if (!复制数据 || !v || !/^[A-Za-z]:[\\/]|^\\\\|^\//.test(v)) { set预演(null); return }
+      let 取消 = false
+      const 定时 = setTimeout(async () => {
+        try {
+          const r = await rpcCall('/api', 'dafeiyu-memory/settings', { action: 'inspect-data-root-move', dataRoot: v })
+          const info = 解包(r) || {}
+          if (!取消) set预演(info.ok === false ? info : { ...info, ok: true })
+        } catch (e) {
+          if (!取消) set预演({ ok: false, code: 'inspect-failed', reason: e && e.message ? e.message : String(e) })
+        }
+      }, 400)
+      return () => { 取消 = true; clearTimeout(定时) }
+    }, [数据根, 复制数据])
+
     /* ⭐ 数据根目录保存：写 <DSH_HOME>/bigfish/root.json。
-       这是「下一次启动才生效」—— 当前跑着的实例已经打开了旧路径的库，
-       热切库会带来锁与回灌问题，所以统一走「改文件 + 重启」。 */
+       勾了「同时复制」就先复制、后改配置 —— 复制失败则配置不动，用户还在旧目录里工作。
+       这是「下一次启动才生效」：当前实例已经打开了旧路径的库，热切库要处理锁与回灌。 */
     const 保存根 = async () => {
       const v = String(数据根 || '').trim()
       // 只挡明显不是绝对路径的输入，盘符/UNC/斜杠开头都放行
@@ -3187,13 +3210,20 @@ function 创建设置面板(React, h, 依赖) {
         set根错误('要填绝对路径，例如 D:\\大肥鱼\\数据')
         return
       }
+      if (v && 复制数据 && 预演 && 预演.ok === false) {
+        set根错误('目录没法复制：' + (预演.reason || '未知原因') + (预演.conflict && 预演.conflict.length ? '（里面已有：' + 预演.conflict.slice(0, 5).join('、') + '）' : ''))
+        return
+      }
       set根保存中(true); set根错误(''); set根提示('')
       try {
-        const r = await rpcCall('/api', 'dafeiyu-memory/settings', { action: 'write-data-root', dataRoot: v })
+        const r = await rpcCall('/api', 'dafeiyu-memory/settings', {
+          action: 'write-data-root', dataRoot: v, copyData: !!(v && 复制数据),
+        })
         const info = 解包(r) || {}
-        if (info.ok === false) throw new Error(info.note || '写入失败')
+        if (info.ok === false) throw new Error(info.note || info.reason || '写入失败')
         const 话 = info.note || '已保存。重启 DSH 后生效。'
         set根提示(话)
+        set预演(null)
         await 读全部()
         set根提示(话)
       } catch (e) {
@@ -3289,6 +3319,31 @@ function 创建设置面板(React, h, 依赖) {
         h('p', { className: 'bf-note' },
           '留空 = 用默认目录（', 默认根 || '未确定', '）。填绝对路径后写到 ',
           根配置文件 || '<DSH_HOME>/bigfish/root.json', '，重启 DSH 生效。'),
+
+        h('label', { className: 'bf-check', style: { marginTop: '10px' } },
+          h('input', {
+            type: 'checkbox', checked: 复制数据,
+            onChange: (e) => { set复制数据(e.target.checked); set根提示(''); set根错误('') },
+          }),
+          h('span', null, '同时把现有数据复制到新目录')),
+
+        复制数据
+          ? h('p', { className: 'bf-note', style: { marginTop: '4px' } },
+              '只复制，不删除：旧目录原地保留，确认新目录能用后你可以自己删。目标目录必须是空的，不会覆盖任何已有文件。')
+          : h('p', { className: 'bf-note', style: { marginTop: '4px' } },
+              '只改路径，数据留在原处。新目录若是空的，重启后会开一个全新的库 —— 旧记忆看不到。'),
+
+        复制数据 && 预演
+          ? (预演.ok === false
+              ? h('p', { className: 'bf-warn' },
+                  '没法复制：', 预演.reason || '未知原因',
+                  预演.conflict && 预演.conflict.length
+                    ? '（目标里已有：' + 预演.conflict.slice(0, 5).join('、') + (预演.conflict.length > 5 ? ' 等' : '') + '）'
+                    : '')
+              : h('p', { className: 'bf-note' },
+                  '将复制 ', String(预演.files || 0), ' 个文件，共 ',
+                  ((Number(预演.bytes) || 0) / 1048576).toFixed(1), ' MB。'))
+          : null,
 
         数据根 && !数据根存在
           ? h('p', { className: 'bf-warn' }, '这个目录现在还不存在 —— 重启后会按它创建；先确认盘符和路径没写错。')
